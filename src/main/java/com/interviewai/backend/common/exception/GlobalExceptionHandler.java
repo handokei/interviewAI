@@ -1,0 +1,48 @@
+package com.interviewai.backend.common.exception;
+
+import com.interviewai.backend.common.response.ApiResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
+        log.warn("BusinessException: {}", e.getMessage());
+        return ResponseEntity
+                .status(e.getErrorCode().getHttpStatus())
+                .body(ApiResponse.fail(e.getErrorCode()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getAllErrors().get(0).getDefaultMessage();
+        log.warn("ValidationException: {}", message);
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.fail(new ErrorCode() {
+                    public String getCode() { return "VALIDATION_ERROR"; }
+                    public String getMessage() { return message; }
+                    public org.springframework.http.HttpStatus getHttpStatus() {
+                        return org.springframework.http.HttpStatus.BAD_REQUEST;
+                    }
+                }));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
+        log.error("Unexpected Exception: ", e);
+        return ResponseEntity.internalServerError()
+                .body(ApiResponse.fail(new ErrorCode() {
+                    public String getCode() { return "INTERNAL_SERVER_ERROR"; }
+                    public String getMessage() { return "서버 내부 오류가 발생했습니다."; }
+                    public org.springframework.http.HttpStatus getHttpStatus() {
+                        return org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
+                    }
+                }));
+    }
+}
