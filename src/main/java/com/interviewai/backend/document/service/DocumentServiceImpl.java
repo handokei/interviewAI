@@ -1,7 +1,6 @@
 package com.interviewai.backend.document.service;
 
 import com.interviewai.backend.client.PdfParserClient;
-import com.interviewai.backend.client.S3StorageClient;
 import com.interviewai.backend.common.exception.BusinessException;
 import com.interviewai.backend.document.controller.dto.DocumentListResponseDto;
 import com.interviewai.backend.document.controller.dto.DocumentUploadResponseDto;
@@ -27,11 +26,9 @@ import java.util.List;
 public class DocumentServiceImpl implements DocumentService {
 
     private static final String PDF_CONTENT_TYPE = "application/pdf";
-    private static final String DOCUMENTS_DIRECTORY = "documents";
 
     private final UserDocumentRepository userDocumentRepository;
     private final UserRepository userRepository;
-    private final S3StorageClient s3StorageClient;
     private final PdfParserClient pdfParserClient;
 
     @Override
@@ -42,16 +39,7 @@ public class DocumentServiceImpl implements DocumentService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
-        String s3Key;
         String parsedText;
-
-        try {
-            s3Key = s3StorageClient.upload(file, DOCUMENTS_DIRECTORY);
-        } catch (Exception e) {
-            log.error("S3 업로드 실패: {}", e.getMessage());
-            throw new BusinessException(DocumentErrorCode.FILE_UPLOAD_FAILED);
-        }
-
         try {
             parsedText = pdfParserClient.parse(file);
         } catch (Exception e) {
@@ -63,7 +51,6 @@ public class DocumentServiceImpl implements DocumentService {
                 .user(user)
                 .documentType(documentType)
                 .originalFileName(file.getOriginalFilename())
-                .s3Key(s3Key)
                 .parsedText(parsedText)
                 .build();
 
@@ -84,7 +71,6 @@ public class DocumentServiceImpl implements DocumentService {
         UserDocument document = userDocumentRepository.findByIdAndUserId(documentId, userId)
                 .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
 
-        s3StorageClient.delete(document.getS3Key());
         userDocumentRepository.delete(document);
     }
 

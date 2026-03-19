@@ -28,9 +28,6 @@ public class UserDocument {
 
     private String originalFileName;
 
-    @Column(nullable = false)
-    private String s3Key;
-
     @Column(columnDefinition = "TEXT")
     private String parsedText;
 
@@ -39,12 +36,10 @@ public class UserDocument {
     private LocalDateTime createdAt;
 
     @Builder
-    public UserDocument(User user, DocumentType documentType, String originalFileName,
-                        String s3Key, String parsedText) {
+    public UserDocument(User user, DocumentType documentType, String originalFileName, String parsedText) {
         this.user = user;
         this.documentType = documentType;
         this.originalFileName = originalFileName;
-        this.s3Key = s3Key;
         this.parsedText = parsedText;
     }
 

@@ -11,6 +11,5 @@ public class DocumentUploadServiceDto {
     private Long userId;
     private DocumentType documentType;
     private String originalFileName;
-    private String s3Key;
     private String parsedText;
 }

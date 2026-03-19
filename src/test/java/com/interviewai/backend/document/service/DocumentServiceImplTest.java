@@ -1,7 +1,6 @@
 package com.interviewai.backend.document.service;
 
 import com.interviewai.backend.client.PdfParserClient;
-import com.interviewai.backend.client.S3StorageClient;
 import com.interviewai.backend.common.exception.BusinessException;
 import com.interviewai.backend.document.enums.DocumentErrorCode;
 import com.interviewai.backend.document.enums.DocumentType;
@@ -25,7 +24,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,9 +37,6 @@ class DocumentServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
-
-    @Mock
-    private S3StorageClient s3StorageClient;
 
     @Mock
     private PdfParserClient pdfParserClient;
@@ -97,12 +92,10 @@ class DocumentServiceImplTest {
                 .user(testUser)
                 .documentType(DocumentType.RESUME)
                 .originalFileName("resume.pdf")
-                .s3Key("documents/uuid_resume.pdf")
                 .parsedText("이력서 내용")
                 .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
-        given(s3StorageClient.upload(any(), eq("documents"))).willReturn("documents/uuid_resume.pdf");
         given(pdfParserClient.parse(any())).willReturn("이력서 내용");
         given(userDocumentRepository.save(any(UserDocument.class))).willReturn(savedDocument);
 
