@@ -329,6 +329,65 @@ class InterviewServiceImplTest {
                 .hasMessageContaining("면접 세션");
     }
 
+    @Test
+    @DisplayName("기능_테스트_인터뷰_통계를_조회한다")
+    void 기능_테스트_인터뷰_통계를_조회한다() {
+        // given
+        Long userId = 1L;
+
+        given(interviewSessionRepository.countByUserId(userId)).willReturn(10L);
+        given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED)).willReturn(7L);
+        given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED)).willReturn(2L);
+        given(interviewFeedbackRepository.findAverageScoreByUserId(userId)).willReturn(78.5);
+
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.BASIC)).willReturn(5L);
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.RESUME)).willReturn(3L);
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.COMPANY)).willReturn(2L);
+
+        given(interviewSessionRepository.countByUserIdAndLevel(userId, InterviewLevel.JUNIOR)).willReturn(6L);
+        given(interviewSessionRepository.countByUserIdAndLevel(userId, InterviewLevel.SENIOR)).willReturn(4L);
+
+        // when
+        InterviewStatsResponseDto result = interviewService.getMyStats(userId);
+
+        // then
+        assertThat(result.getTotalCount()).isEqualTo(10L);
+        assertThat(result.getCompletedCount()).isEqualTo(7L);
+        assertThat(result.getCancelledCount()).isEqualTo(2L);
+        assertThat(result.getAverageScore()).isEqualTo(78.5);
+        assertThat(result.getModeDistribution()).containsEntry("BASIC", 5L);
+        assertThat(result.getModeDistribution()).containsEntry("RESUME", 3L);
+        assertThat(result.getModeDistribution()).containsEntry("COMPANY", 2L);
+        assertThat(result.getLevelDistribution()).containsEntry("JUNIOR", 6L);
+        assertThat(result.getLevelDistribution()).containsEntry("SENIOR", 4L);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_피드백이_없을때_평균점수가_null이다")
+    void 기능_테스트_피드백이_없을때_평균점수가_null이다() {
+        // given
+        Long userId = 1L;
+
+        given(interviewSessionRepository.countByUserId(userId)).willReturn(0L);
+        given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED)).willReturn(0L);
+        given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED)).willReturn(0L);
+        given(interviewFeedbackRepository.findAverageScoreByUserId(userId)).willReturn(null);
+
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.BASIC)).willReturn(0L);
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.RESUME)).willReturn(0L);
+        given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.COMPANY)).willReturn(0L);
+
+        given(interviewSessionRepository.countByUserIdAndLevel(userId, InterviewLevel.JUNIOR)).willReturn(0L);
+        given(interviewSessionRepository.countByUserIdAndLevel(userId, InterviewLevel.SENIOR)).willReturn(0L);
+
+        // when
+        InterviewStatsResponseDto result = interviewService.getMyStats(userId);
+
+        // then
+        assertThat(result.getTotalCount()).isZero();
+        assertThat(result.getAverageScore()).isNull();
+    }
+
     private void setField(Object target, String fieldName, Object value) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);

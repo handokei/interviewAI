@@ -82,4 +82,11 @@ public class InterviewController {
         interviewService.cancelInterview(userId, sessionId);
         return ResponseEntity.ok(ApiResponse.ok(null, "면접이 취소되었습니다."));
     }
+
+    @Operation(summary = "내 면접 통계 조회")
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<InterviewStatsResponseDto>> getMyStats(
+            @AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(ApiResponse.ok(interviewService.getMyStats(userId)));
+    }
 }
