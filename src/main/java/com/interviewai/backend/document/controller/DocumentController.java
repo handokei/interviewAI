@@ -8,13 +8,15 @@ import com.interviewai.backend.document.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 @Tag(name = "Document", description = "문서 관리 API")
 @RestController
@@ -35,9 +37,10 @@ public class DocumentController {
 
     @Operation(summary = "내 문서 목록 조회")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<DocumentListResponseDto>>> getMyDocuments(
-            @AuthenticationPrincipal Long userId) {
-        return ResponseEntity.ok(ApiResponse.ok(documentService.findMyDocuments(userId)));
+    public ResponseEntity<ApiResponse<Page<DocumentListResponseDto>>> getMyDocuments(
+            @AuthenticationPrincipal Long userId,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok(documentService.findMyDocuments(userId, pageable)));
     }
 
     @Operation(summary = "문서 삭제")

@@ -7,6 +7,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -48,9 +52,10 @@ public class InterviewController {
 
     @Operation(summary = "내 면접 이력 목록")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<InterviewSessionResponseDto>>> getMySessions(
-            @AuthenticationPrincipal Long userId) {
-        return ResponseEntity.ok(ApiResponse.ok(interviewService.findMySessions(userId)));
+    public ResponseEntity<ApiResponse<Page<InterviewSessionResponseDto>>> getMySessions(
+            @AuthenticationPrincipal Long userId,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.ok(interviewService.findMySessions(userId, pageable)));
     }
 
     @Operation(summary = "면접 대화 내용 조회")
