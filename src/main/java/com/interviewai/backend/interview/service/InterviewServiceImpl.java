@@ -23,6 +23,8 @@ import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -154,11 +156,9 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
-    public List<InterviewSessionResponseDto> findMySessions(Long userId) {
-        return interviewSessionRepository.findByUserIdOrderByCreatedAtDesc(userId)
-                .stream()
-                .map(InterviewSessionResponseDto::from)
-                .toList();
+    public Page<InterviewSessionResponseDto> findMySessions(Long userId, Pageable pageable) {
+        return interviewSessionRepository.findByUserId(userId, pageable)
+                .map(InterviewSessionResponseDto::from);
     }
 
     @Override

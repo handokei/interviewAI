@@ -2,6 +2,7 @@ package com.interviewai.backend.document.service;
 
 import com.interviewai.backend.client.PdfParserClient;
 import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.document.controller.dto.DocumentListResponseDto;
 import com.interviewai.backend.document.enums.DocumentErrorCode;
 import com.interviewai.backend.document.enums.DocumentType;
 import com.interviewai.backend.document.model.UserDocument;
@@ -17,13 +18,19 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,8 +74,6 @@ class DocumentServiceImplTest {
                 "invalid content".getBytes()
         );
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
-
         // when & then
         assertThatThrownBy(() -> documentService.uploadDocument(userId, invalidFile, DocumentType.RESUME))
                 .isInstanceOf(BusinessException.class)
@@ -106,6 +111,52 @@ class DocumentServiceImplTest {
         assertThat(response).isNotNull();
         assertThat(response.getDocumentType()).isEqualTo(DocumentType.RESUME);
         assertThat(response.getOriginalFileName()).isEqualTo("resume.pdf");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_문서_목록을_페이지네이션으로_조회한다")
+    void 기능_테스트_문서_목록을_페이지네이션으로_조회한다() {
+        // given
+        Long userId = 1L;
+        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        UserDocument document = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서 내용")
+                .build();
+
+        Page<UserDocument> documentPage = new PageImpl<>(List.of(document), pageable, 1);
+        given(userDocumentRepository.findByUserId(eq(userId), eq(pageable))).willReturn(documentPage);
+
+        // when
+        Page<DocumentListResponseDto> result = documentService.findMyDocuments(userId, pageable);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getDocumentType()).isEqualTo(DocumentType.RESUME);
+        assertThat(result.getContent().get(0).getOriginalFileName()).isEqualTo("resume.pdf");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_문서가_없을_때_빈_페이지를_반환한다")
+    void 기능_테스트_문서가_없을_때_빈_페이지를_반환한다() {
+        // given
+        Long userId = 1L;
+        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        given(userDocumentRepository.findByUserId(eq(userId), eq(pageable)))
+                .willReturn(Page.empty(pageable));
+
+        // when
+        Page<DocumentListResponseDto> result = documentService.findMyDocuments(userId, pageable);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getTotalElements()).isZero();
+        assertThat(result.getContent()).isEmpty();
     }
 
     @Test

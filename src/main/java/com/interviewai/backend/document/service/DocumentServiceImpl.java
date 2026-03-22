@@ -13,11 +13,11 @@ import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 @Slf4j
 @Service
@@ -58,11 +58,9 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    public List<DocumentListResponseDto> findMyDocuments(Long userId) {
-        return userDocumentRepository.findByUserIdOrderByCreatedAtDesc(userId)
-                .stream()
-                .map(DocumentListResponseDto::from)
-                .toList();
+    public Page<DocumentListResponseDto> findMyDocuments(Long userId, Pageable pageable) {
+        return userDocumentRepository.findByUserId(userId, pageable)
+                .map(DocumentListResponseDto::from);
     }
 
     @Override

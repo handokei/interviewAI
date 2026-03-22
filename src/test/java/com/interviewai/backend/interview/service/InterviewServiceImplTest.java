@@ -24,6 +24,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +35,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -168,6 +173,52 @@ class InterviewServiceImplTest {
         assertThatThrownBy(() -> interviewService.sendMessage(userId, sessionId, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("완료");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_면접_세션_목록을_페이지네이션으로_조회한다")
+    void 기능_테스트_면접_세션_목록을_페이지네이션으로_조회한다() {
+        // given
+        Long userId = 1L;
+        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .jobTitle("백엔드 개발자")
+                .build();
+
+        Page<InterviewSession> sessionPage = new PageImpl<>(List.of(session), pageable, 1);
+        given(interviewSessionRepository.findByUserId(eq(userId), eq(pageable))).willReturn(sessionPage);
+
+        // when
+        Page<InterviewSessionResponseDto> result = interviewService.findMySessions(userId, pageable);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent().get(0).getMode()).isEqualTo(InterviewMode.BASIC);
+        assertThat(result.getContent().get(0).getLevel()).isEqualTo(InterviewLevel.JUNIOR);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_면접_세션이_없을_때_빈_페이지를_반환한다")
+    void 기능_테스트_면접_세션이_없을_때_빈_페이지를_반환한다() {
+        // given
+        Long userId = 1L;
+        PageRequest pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        given(interviewSessionRepository.findByUserId(eq(userId), eq(pageable)))
+                .willReturn(Page.empty(pageable));
+
+        // when
+        Page<InterviewSessionResponseDto> result = interviewService.findMySessions(userId, pageable);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getTotalElements()).isZero();
+        assertThat(result.getContent()).isEmpty();
     }
 
     @Test
