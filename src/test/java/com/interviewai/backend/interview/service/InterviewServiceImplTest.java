@@ -245,6 +245,91 @@ class InterviewServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_진행_중인_면접_세션을_취소한다")
+    void 기능_테스트_진행_중인_면접_세션을_취소한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when
+        interviewService.cancelInterview(userId, sessionId);
+
+        // then
+        assertThat(session.getStatus()).isEqualTo(com.interviewai.backend.interview.enums.InterviewStatus.CANCELLED);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_완료된_면접_세션을_취소하면_예외가_발생한다")
+    void 예외_테스트_완료된_면접_세션을_취소하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.complete();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.cancelInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("취소");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_이미_취소된_면접_세션을_취소하면_예외가_발생한다")
+    void 예외_테스트_이미_취소된_면접_세션을_취소하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.cancel();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.cancelInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("취소");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_세션을_취소하면_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_세션을_취소하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.cancelInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
     @DisplayName("기능_테스트_인터뷰_통계를_조회한다")
     void 기능_테스트_인터뷰_통계를_조회한다() {
         // given

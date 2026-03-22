@@ -20,5 +20,7 @@ public interface InterviewService {
 
     InterviewFeedbackResponseDto findFeedback(Long userId, Long sessionId);
 
+    void cancelInterview(Long userId, Long sessionId);
+
     InterviewStatsResponseDto getMyStats(Long userId);
 }
