@@ -73,4 +73,13 @@ public class InterviewController {
             @PathVariable Long sessionId) {
         return ResponseEntity.ok(ApiResponse.ok(interviewService.findFeedback(userId, sessionId)));
     }
+
+    @Operation(summary = "면접 취소")
+    @PatchMapping("/{sessionId}/cancel")
+    public ResponseEntity<ApiResponse<Void>> cancelInterview(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long sessionId) {
+        interviewService.cancelInterview(userId, sessionId);
+        return ResponseEntity.ok(ApiResponse.ok(null, "면접이 취소되었습니다."));
+    }
 }
