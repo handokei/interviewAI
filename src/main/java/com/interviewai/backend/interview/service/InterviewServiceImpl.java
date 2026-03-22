@@ -156,6 +156,19 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    @Transactional
+    public void cancelInterview(Long userId, Long sessionId) {
+        InterviewSession session = interviewSessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException(InterviewErrorCode.SESSION_NOT_FOUND));
+
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new BusinessException(InterviewErrorCode.SESSION_CANNOT_CANCEL);
+        }
+
+        session.cancel();
+    }
+
+    @Override
     public Page<InterviewSessionResponseDto> findMySessions(Long userId, Pageable pageable) {
         return interviewSessionRepository.findByUserId(userId, pageable)
                 .map(InterviewSessionResponseDto::from);
