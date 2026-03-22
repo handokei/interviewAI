@@ -9,6 +9,7 @@ import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;
 import com.interviewai.backend.interview.enums.InterviewErrorCode;
+import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.enums.InterviewMode;
 import com.interviewai.backend.interview.enums.InterviewStatus;
 import com.interviewai.backend.interview.enums.MessageRole;
@@ -181,6 +182,33 @@ public class InterviewServiceImpl implements InterviewService {
                 .orElseThrow(() -> new BusinessException(InterviewErrorCode.FEEDBACK_NOT_FOUND));
 
         return InterviewFeedbackResponseDto.from(feedback);
+    }
+
+    @Override
+    public InterviewStatsResponseDto getMyStats(Long userId) {
+        long totalCount = interviewSessionRepository.countByUserId(userId);
+        long completedCount = interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED);
+        long cancelledCount = interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED);
+        Double averageScore = interviewFeedbackRepository.findAverageScoreByUserId(userId);
+
+        java.util.Map<String, Long> modeDistribution = new java.util.LinkedHashMap<>();
+        for (InterviewMode mode : InterviewMode.values()) {
+            modeDistribution.put(mode.name(), interviewSessionRepository.countByUserIdAndMode(userId, mode));
+        }
+
+        java.util.Map<String, Long> levelDistribution = new java.util.LinkedHashMap<>();
+        for (InterviewLevel level : InterviewLevel.values()) {
+            levelDistribution.put(level.name(), interviewSessionRepository.countByUserIdAndLevel(userId, level));
+        }
+
+        return InterviewStatsResponseDto.builder()
+                .totalCount(totalCount)
+                .completedCount(completedCount)
+                .cancelledCount(cancelledCount)
+                .averageScore(averageScore)
+                .modeDistribution(modeDistribution)
+                .levelDistribution(levelDistribution)
+                .build();
     }
 
     private void validateModeRequirements(InterviewStartRequestDto request) {
