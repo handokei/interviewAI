@@ -19,4 +19,6 @@ public interface InterviewService {
     List<InterviewMessageResponseDto> findSessionMessages(Long userId, Long sessionId);
 
     InterviewFeedbackResponseDto findFeedback(Long userId, Long sessionId);
+
+    InterviewStatsResponseDto getMyStats(Long userId);
 }
