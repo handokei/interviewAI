@@ -13,7 +13,8 @@ public enum InterviewErrorCode implements ErrorCode {
     SESSION_ALREADY_COMPLETED("I002", "이미 완료된 면접 세션입니다.", HttpStatus.BAD_REQUEST),
     INVALID_INTERVIEW_MODE("I003", "잘못된 면접 모드입니다.", HttpStatus.BAD_REQUEST),
     FEEDBACK_NOT_FOUND("I004", "피드백을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-    DOCUMENT_REQUIRED("I005", "이 면접 모드에서는 문서가 필요합니다.", HttpStatus.BAD_REQUEST);
+    DOCUMENT_REQUIRED("I005", "이 면접 모드에서는 문서가 필요합니다.", HttpStatus.BAD_REQUEST),
+    SESSION_CANNOT_CANCEL("I006", "진행 중인 면접 세션만 취소할 수 있습니다.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;
