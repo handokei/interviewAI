@@ -73,4 +73,11 @@ public class InterviewController {
             @PathVariable Long sessionId) {
         return ResponseEntity.ok(ApiResponse.ok(interviewService.findFeedback(userId, sessionId)));
     }
+
+    @Operation(summary = "내 면접 통계 조회")
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<InterviewStatsResponseDto>> getMyStats(
+            @AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(ApiResponse.ok(interviewService.getMyStats(userId)));
+    }
 }
