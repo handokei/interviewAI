@@ -42,8 +42,8 @@ public class DocumentServiceImpl implements DocumentService {
         String parsedText;
         try {
             parsedText = pdfParserClient.parse(file);
-        } catch (Exception e) {
-            log.error("PDF 파싱 실패: {}", e.getMessage());
+        } catch (Throwable e) {
+            log.error("PDF 파싱 실패: {}", e.getMessage(), e);
             throw new BusinessException(DocumentErrorCode.FILE_PARSE_FAILED);
         }
 
