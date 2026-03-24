@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @Slf4j
@@ -28,6 +29,19 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(new ErrorCode() {
                     public String getCode() { return "VALIDATION_ERROR"; }
                     public String getMessage() { return message; }
+                    public org.springframework.http.HttpStatus getHttpStatus() {
+                        return org.springframework.http.HttpStatus.BAD_REQUEST;
+                    }
+                }));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatchException(MethodArgumentTypeMismatchException e) {
+        log.warn("MethodArgumentTypeMismatchException: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.fail(new ErrorCode() {
+                    public String getCode() { return "INVALID_PARAMETER"; }
+                    public String getMessage() { return "잘못된 파라미터 값입니다: " + e.getName(); }
                     public org.springframework.http.HttpStatus getHttpStatus() {
                         return org.springframework.http.HttpStatus.BAD_REQUEST;
                     }
