@@ -4,14 +4,18 @@ import com.interviewai.backend.client.ClaudeAiClient;
 import com.interviewai.backend.client.GithubApiClient;
 import com.interviewai.backend.client.JobCrawlerClient;
 import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.document.enums.DocumentType;
+import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;
 import com.interviewai.backend.interview.enums.*;
 import com.interviewai.backend.interview.model.InterviewFeedback;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
+import com.interviewai.backend.interview.model.InterviewSessionDocument;
 import com.interviewai.backend.interview.repository.InterviewFeedbackRepository;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
+import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionRepository;
 import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.user.enums.OAuthProvider;
@@ -37,7 +41,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class InterviewServiceImplTest {
@@ -47,6 +54,9 @@ class InterviewServiceImplTest {
 
     @Mock
     private InterviewSessionRepository interviewSessionRepository;
+
+    @Mock
+    private InterviewSessionDocumentRepository interviewSessionDocumentRepository;
 
     @Mock
     private InterviewMessageRepository interviewMessageRepository;
@@ -114,6 +124,47 @@ class InterviewServiceImplTest {
         assertThat(response.getLevel()).isEqualTo(InterviewLevel.JUNIOR);
         assertThat(response.getFirstQuestion()).isNotBlank();
         verify(interviewSessionRepository).save(any(InterviewSession.class));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_이력서_모드에서_다중_문서로_면접_세션을_생성한다")
+    void 기능_테스트_이력서_모드에서_다중_문서로_면접_세션을_생성한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L, 2L));
+
+        UserDocument resume = mock(UserDocument.class);
+        when(resume.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(resume.getParsedText()).thenReturn("이력서 내용입니다.");
+
+        UserDocument portfolio = mock(UserDocument.class);
+        when(portfolio.getDocumentType()).thenReturn(DocumentType.PORTFOLIO);
+        when(portfolio.getParsedText()).thenReturn("포트폴리오 내용입니다.");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.RESUME)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L, 2L), userId))
+                .willReturn(List.of(resume, portfolio));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        assertThat(response.getMode()).isEqualTo(InterviewMode.RESUME);
+        verify(interviewSessionDocumentRepository, times(2)).save(any(InterviewSessionDocument.class));
     }
 
     @Test
