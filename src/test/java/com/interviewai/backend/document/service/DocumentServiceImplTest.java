@@ -174,4 +174,43 @@ class DocumentServiceImplTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(DocumentErrorCode.DOCUMENT_NOT_FOUND));
     }
+
+    @Test
+    @DisplayName("기능_테스트_문서_유형을_변경한다")
+    void 기능_테스트_문서_유형을_변경한다() {
+        // given
+        Long userId = 1L;
+        Long documentId = 1L;
+
+        UserDocument document = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서 내용")
+                .build();
+
+        given(userDocumentRepository.findByIdAndUserId(documentId, userId)).willReturn(Optional.of(document));
+
+        // when
+        documentService.updateDocumentType(userId, documentId, DocumentType.PORTFOLIO);
+
+        // then
+        assertThat(document.getDocumentType()).isEqualTo(DocumentType.PORTFOLIO);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_문서의_유형을_변경하면_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_문서의_유형을_변경하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long documentId = 999L;
+
+        given(userDocumentRepository.findByIdAndUserId(documentId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> documentService.updateDocumentType(userId, documentId, DocumentType.PORTFOLIO))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+    }
 }
