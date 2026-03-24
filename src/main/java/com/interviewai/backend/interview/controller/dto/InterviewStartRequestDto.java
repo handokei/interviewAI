@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Getter
 @NoArgsConstructor
 public class InterviewStartRequestDto {
@@ -18,7 +20,7 @@ public class InterviewStartRequestDto {
 
     private String jobTitle;
 
-    private Long documentId;
+    private List<Long> documentIds;
 
     private String jobPostingUrl;
 
