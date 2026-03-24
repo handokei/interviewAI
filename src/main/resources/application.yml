@@ -39,6 +39,11 @@ spring:
         options:
           model: claude-sonnet-4-6
 
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 50MB
+
 server:
   port: 8080
 
