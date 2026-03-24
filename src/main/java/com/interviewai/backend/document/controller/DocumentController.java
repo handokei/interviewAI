@@ -18,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+
 @Tag(name = "Document", description = "문서 관리 API")
 @RestController
 @RequestMapping("/api/documents")
@@ -31,8 +32,18 @@ public class DocumentController {
     public ResponseEntity<ApiResponse<DocumentUploadResponseDto>> uploadDocument(
             @AuthenticationPrincipal Long userId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam("documentType") DocumentType documentType) {
+            @RequestParam(value = "documentType", required = false, defaultValue = "RESUME") DocumentType documentType) {
         return ResponseEntity.ok(ApiResponse.ok(documentService.uploadDocument(userId, file, documentType)));
+    }
+
+    @Operation(summary = "문서 유형 변경")
+    @PatchMapping("/{documentId}/type")
+    public ResponseEntity<ApiResponse<Void>> updateDocumentType(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long documentId,
+            @RequestParam DocumentType documentType) {
+        documentService.updateDocumentType(userId, documentId, documentType);
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
     @Operation(summary = "내 문서 목록 조회")

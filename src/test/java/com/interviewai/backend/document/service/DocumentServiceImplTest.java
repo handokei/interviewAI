@@ -27,11 +27,14 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.util.List;
 import java.util.Optional;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceImplTest {
@@ -114,6 +117,34 @@ class DocumentServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_parsedText의_null_바이트를_제거하고_저장한다")
+    void 기능_테스트_parsedText의_null_바이트를_제거하고_저장한다() throws Exception {
+        // given
+        Long userId = 1L;
+        MockMultipartFile pdfFile = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "pdf content".getBytes());
+        String textWithNullBytes = "이력서\u0000내용\u0000";
+        UserDocument savedDocument = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서내용")
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(pdfParserClient.parse(any())).willReturn(textWithNullBytes);
+        given(userDocumentRepository.save(any(UserDocument.class))).willReturn(savedDocument);
+
+        // when
+        documentService.uploadDocument(userId, pdfFile, DocumentType.RESUME);
+
+        // then
+        ArgumentCaptor<UserDocument> captor = ArgumentCaptor.forClass(UserDocument.class);
+        verify(userDocumentRepository).save(captor.capture());
+        assertThat(captor.getValue().getParsedText()).doesNotContain("\u0000");
+    }
+
+    @Test
     @DisplayName("기능_테스트_문서_목록을_페이지네이션으로_조회한다")
     void 기능_테스트_문서_목록을_페이지네이션으로_조회한다() {
         // given
@@ -170,6 +201,45 @@ class DocumentServiceImplTest {
 
         // when & then
         assertThatThrownBy(() -> documentService.deleteDocument(userId, documentId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_문서_유형을_변경한다")
+    void 기능_테스트_문서_유형을_변경한다() {
+        // given
+        Long userId = 1L;
+        Long documentId = 1L;
+
+        UserDocument document = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서 내용")
+                .build();
+
+        given(userDocumentRepository.findByIdAndUserId(documentId, userId)).willReturn(Optional.of(document));
+
+        // when
+        documentService.updateDocumentType(userId, documentId, DocumentType.PORTFOLIO);
+
+        // then
+        assertThat(document.getDocumentType()).isEqualTo(DocumentType.PORTFOLIO);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_문서의_유형을_변경하면_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_문서의_유형을_변경하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long documentId = 999L;
+
+        given(userDocumentRepository.findByIdAndUserId(documentId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> documentService.updateDocumentType(userId, documentId, DocumentType.PORTFOLIO))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(DocumentErrorCode.DOCUMENT_NOT_FOUND));

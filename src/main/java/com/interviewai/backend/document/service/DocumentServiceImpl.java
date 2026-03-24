@@ -41,7 +41,7 @@ public class DocumentServiceImpl implements DocumentService {
 
         String parsedText;
         try {
-            parsedText = pdfParserClient.parse(file);
+            parsedText = pdfParserClient.parse(file).replace("\u0000", "");
         } catch (Throwable e) {
             log.error("PDF 파싱 실패: {}", e.getMessage(), e);
             throw new BusinessException(DocumentErrorCode.FILE_PARSE_FAILED);
@@ -70,6 +70,15 @@ public class DocumentServiceImpl implements DocumentService {
                 .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
 
         userDocumentRepository.delete(document);
+    }
+
+    @Override
+    @Transactional
+    public void updateDocumentType(Long userId, Long documentId, DocumentType documentType) {
+        UserDocument document = userDocumentRepository.findByIdAndUserId(documentId, userId)
+                .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+
+        document.updateDocumentType(documentType);
     }
 
     private void validatePdfFile(MultipartFile file) {
