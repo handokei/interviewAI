@@ -15,4 +15,6 @@ public interface UserDocumentRepository extends JpaRepository<UserDocument, Long
     Page<UserDocument> findByUserId(Long userId, Pageable pageable);
 
     Optional<UserDocument> findByIdAndUserId(Long id, Long userId);
+
+    List<UserDocument> findAllByIdInAndUserId(List<Long> ids, Long userId);
 }
