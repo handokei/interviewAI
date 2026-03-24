@@ -41,7 +41,7 @@ public class DocumentServiceImpl implements DocumentService {
 
         String parsedText;
         try {
-            parsedText = pdfParserClient.parse(file);
+            parsedText = pdfParserClient.parse(file).replace("\u0000", "");
         } catch (Throwable e) {
             log.error("PDF 파싱 실패: {}", e.getMessage(), e);
             throw new BusinessException(DocumentErrorCode.FILE_PARSE_FAILED);
