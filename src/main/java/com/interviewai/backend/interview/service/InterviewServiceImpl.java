@@ -133,18 +133,21 @@ public class InterviewServiceImpl implements InterviewService {
                 .stream()
                 .map(InterviewSessionDocument::getDocument)
                 .toList();
-        String systemPrompt = buildSystemPrompt(session, documents, session.getJobPostingContent(), null);
-        String aiResponse = claudeAiClient.chat(systemPrompt, history, request.getContent());
+        String systemPrompt = buildSendMessageSystemPrompt(session, documents, session.getJobPostingContent());
+        String rawResponse = claudeAiClient.chat(systemPrompt, history, request.getContent());
+
+        AiStructuredResponse parsed = parseAiStructuredResponse(rawResponse);
 
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(session)
                 .role(MessageRole.AI)
-                .content(aiResponse)
+                .content(parsed.nextQuestion())
                 .build());
 
         return InterviewSendMessageResponseDto.builder()
-                .aiResponse(aiResponse)
+                .aiResponse(parsed.nextQuestion())
                 .isCompleted(false)
+                .suggestFinish(parsed.suggestFinish())
                 .build();
     }
 
@@ -302,6 +305,47 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         return prompt.toString();
+    }
+
+    private String buildSendMessageSystemPrompt(InterviewSession session, List<UserDocument> documents,
+                                                 String jobPostingContent) {
+        String base = buildSystemPrompt(session, documents, jobPostingContent, null);
+        String finishCriteria = session.getLevel() == InterviewLevel.JUNIOR
+                ? "- JUNIOR: 최소 5개 이상의 질문을 통해 기술 이해도, 문제 해결, 커뮤니케이션, 경험/사례 영역을 고루 다뤘을 때"
+                : "- SENIOR: 최소 7개 이상의 질문을 통해 기술 이해도, 문제 해결, 커뮤니케이션, 경험/사례 영역에 더해 기술 깊이/아키텍처, 리더십/협업 영역까지 다뤘을 때";
+
+        return base + """
+
+                응답 형식 (반드시 아래 JSON만 반환, 다른 텍스트 없이):
+                {
+                  "nextQuestion": "다음 면접 질문 내용",
+                  "suggestFinish": false
+                }
+
+                suggestFinish를 true로 설정하는 기준:
+                """ + finishCriteria;
+    }
+
+    private record AiStructuredResponse(String nextQuestion, boolean suggestFinish) {
+    }
+
+    private AiStructuredResponse parseAiStructuredResponse(String rawResponse) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String jsonStr = rawResponse;
+            int jsonStart = jsonStr.indexOf('{');
+            int jsonEnd = jsonStr.lastIndexOf('}');
+            if (jsonStart >= 0 && jsonEnd >= 0) {
+                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
+                String nextQuestion = node.has("nextQuestion") ? node.get("nextQuestion").asText() : rawResponse;
+                boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
+                return new AiStructuredResponse(nextQuestion, suggestFinish);
+            }
+        } catch (Exception e) {
+            log.warn("AI 구조화 응답 파싱 실패, 원본 텍스트 사용: {}", e.getMessage());
+        }
+        return new AiStructuredResponse(rawResponse, false);
     }
 
     private String buildFeedbackSystemPrompt(InterviewSession session) {
