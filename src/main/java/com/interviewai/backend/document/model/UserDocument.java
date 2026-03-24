@@ -46,4 +46,8 @@ public class UserDocument {
     public void updateParsedText(String parsedText) {
         this.parsedText = parsedText;
     }
+
+    public void updateDocumentType(DocumentType documentType) {
+        this.documentType = documentType;
+    }
 }
