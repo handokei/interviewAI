@@ -27,11 +27,14 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.util.List;
 import java.util.Optional;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceImplTest {
@@ -111,6 +114,34 @@ class DocumentServiceImplTest {
         assertThat(response).isNotNull();
         assertThat(response.getDocumentType()).isEqualTo(DocumentType.RESUME);
         assertThat(response.getOriginalFileName()).isEqualTo("resume.pdf");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parsedText의_null_바이트를_제거하고_저장한다")
+    void 기능_테스트_parsedText의_null_바이트를_제거하고_저장한다() throws Exception {
+        // given
+        Long userId = 1L;
+        MockMultipartFile pdfFile = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "pdf content".getBytes());
+        String textWithNullBytes = "이력서\u0000내용\u0000";
+        UserDocument savedDocument = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서내용")
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(pdfParserClient.parse(any())).willReturn(textWithNullBytes);
+        given(userDocumentRepository.save(any(UserDocument.class))).willReturn(savedDocument);
+
+        // when
+        documentService.uploadDocument(userId, pdfFile, DocumentType.RESUME);
+
+        // then
+        ArgumentCaptor<UserDocument> captor = ArgumentCaptor.forClass(UserDocument.class);
+        verify(userDocumentRepository).save(captor.capture());
+        assertThat(captor.getValue().getParsedText()).doesNotContain("\u0000");
     }
 
     @Test
