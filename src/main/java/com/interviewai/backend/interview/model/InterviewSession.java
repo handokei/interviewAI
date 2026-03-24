@@ -1,6 +1,5 @@
 package com.interviewai.backend.interview.model;
 
-import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.enums.InterviewMode;
 import com.interviewai.backend.interview.enums.InterviewStatus;
@@ -40,10 +39,6 @@ public class InterviewSession {
 
     private String jobTitle;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "document_id")
-    private UserDocument document;
-
     private String jobPostingUrl;
 
     @Column(columnDefinition = "TEXT")
@@ -59,14 +54,12 @@ public class InterviewSession {
 
     @Builder
     public InterviewSession(User user, InterviewMode mode, InterviewLevel level,
-                            String jobTitle, UserDocument document,
-                            String jobPostingUrl, String jobPostingContent) {
+                            String jobTitle, String jobPostingUrl, String jobPostingContent) {
         this.user = user;
         this.mode = mode;
         this.level = level;
         this.status = InterviewStatus.IN_PROGRESS;
         this.jobTitle = jobTitle;
-        this.document = document;
         this.jobPostingUrl = jobPostingUrl;
         this.jobPostingContent = jobPostingContent;
     }

@@ -37,8 +37,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 
-	// Spring AI - Anthropic (Claude)
-	implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
+	// Spring AI - Anthropic (Claude) [주석 처리 - Gemini 전환]
+//	implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
+
+	// Spring AI - OpenAI 호환 (Gemini)
+	implementation 'org.springframework.ai:spring-ai-openai-spring-boot-starter'
 
 	// OAuth2
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'

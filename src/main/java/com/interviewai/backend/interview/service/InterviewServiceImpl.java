@@ -16,8 +16,10 @@ import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewFeedback;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
+import com.interviewai.backend.interview.model.InterviewSessionDocument;
 import com.interviewai.backend.interview.repository.InterviewFeedbackRepository;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
+import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionRepository;
 import com.interviewai.backend.user.enums.UserErrorCode;
 import com.interviewai.backend.user.model.User;
@@ -29,6 +31,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -38,6 +41,7 @@ import java.util.List;
 public class InterviewServiceImpl implements InterviewService {
 
     private final InterviewSessionRepository interviewSessionRepository;
+    private final InterviewSessionDocumentRepository interviewSessionDocumentRepository;
     private final InterviewMessageRepository interviewMessageRepository;
     private final InterviewFeedbackRepository interviewFeedbackRepository;
     private final UserRepository userRepository;
@@ -54,10 +58,9 @@ public class InterviewServiceImpl implements InterviewService {
 
         validateModeRequirements(request);
 
-        UserDocument document = null;
-        if (request.getDocumentId() != null) {
-            document = userDocumentRepository.findByIdAndUserId(request.getDocumentId(), userId)
-                    .orElseThrow(() -> new BusinessException(InterviewErrorCode.DOCUMENT_REQUIRED));
+        List<UserDocument> documents = new ArrayList<>();
+        if (request.getDocumentIds() != null && !request.getDocumentIds().isEmpty()) {
+            documents = userDocumentRepository.findAllByIdInAndUserId(request.getDocumentIds(), userId);
         }
 
         String jobPostingContent = null;
@@ -75,13 +78,21 @@ public class InterviewServiceImpl implements InterviewService {
                 .mode(request.getMode())
                 .level(request.getLevel())
                 .jobTitle(request.getJobTitle())
-                .document(document)
                 .jobPostingUrl(request.getJobPostingUrl())
                 .jobPostingContent(jobPostingContent)
                 .build();
         session = interviewSessionRepository.save(session);
 
-        String systemPrompt = buildSystemPrompt(session, document, jobPostingContent, githubInfo);
+        for (UserDocument document : documents) {
+            interviewSessionDocumentRepository.save(
+                    InterviewSessionDocument.builder()
+                            .session(session)
+                            .document(document)
+                            .build()
+            );
+        }
+
+        String systemPrompt = buildSystemPrompt(session, documents, jobPostingContent, githubInfo);
         String firstQuestion = claudeAiClient.chat(systemPrompt, List.of(),
                 "면접을 시작해주세요. 첫 번째 질문을 해주세요.");
 
@@ -118,8 +129,11 @@ public class InterviewServiceImpl implements InterviewService {
                         msg.getContent()))
                 .toList();
 
-        UserDocument document = session.getDocument();
-        String systemPrompt = buildSystemPrompt(session, document, session.getJobPostingContent(), null);
+        List<UserDocument> documents = interviewSessionDocumentRepository.findBySessionId(sessionId)
+                .stream()
+                .map(InterviewSessionDocument::getDocument)
+                .toList();
+        String systemPrompt = buildSystemPrompt(session, documents, session.getJobPostingContent(), null);
         String aiResponse = claudeAiClient.chat(systemPrompt, history, request.getContent());
 
         interviewMessageRepository.save(InterviewMessage.builder()
@@ -225,17 +239,16 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     private void validateModeRequirements(InterviewStartRequestDto request) {
-        if (request.getMode() == InterviewMode.RESUME && request.getDocumentId() == null
-                && request.getGithubUrl() == null) {
+        boolean hasDocument = request.getDocumentIds() != null && !request.getDocumentIds().isEmpty();
+        if (request.getMode() == InterviewMode.RESUME && !hasDocument && request.getGithubUrl() == null) {
             throw new BusinessException(InterviewErrorCode.DOCUMENT_REQUIRED);
         }
-        if (request.getMode() == InterviewMode.COMPANY && request.getDocumentId() == null
-                && request.getGithubUrl() == null) {
+        if (request.getMode() == InterviewMode.COMPANY && !hasDocument && request.getGithubUrl() == null) {
             throw new BusinessException(InterviewErrorCode.DOCUMENT_REQUIRED);
         }
     }
 
-    private String buildSystemPrompt(InterviewSession session, UserDocument document,
+    private String buildSystemPrompt(InterviewSession session, List<UserDocument> documents,
                                      String jobPostingContent, String githubInfo) {
         StringBuilder prompt = new StringBuilder();
         String levelDescription = switch (session.getLevel()) {
@@ -259,11 +272,17 @@ public class InterviewServiceImpl implements InterviewService {
                 5. 면접 중에는 피드백이나 점수를 주지 않는다.
                 """);
 
-        if (document != null && document.getParsedText() != null) {
-            prompt.append("\n=== 지원자 이력서/포트폴리오 ===\n");
-            String parsedText = document.getParsedText();
-            if (parsedText.length() > 2000) {
-                parsedText = parsedText.substring(0, 2000) + "...";
+        for (UserDocument doc : documents) {
+            if (doc.getParsedText() == null) continue;
+            String docLabel = switch (doc.getDocumentType()) {
+                case RESUME -> "이력서";
+                case PORTFOLIO -> "포트폴리오";
+                case CAREER_STATEMENT -> "경력기술서";
+            };
+            prompt.append("\n=== 지원자 ").append(docLabel).append(" ===\n");
+            String parsedText = doc.getParsedText();
+            if (parsedText.length() > 1500) {
+                parsedText = parsedText.substring(0, 1500) + "...";
             }
             prompt.append(parsedText).append("\n");
         }
