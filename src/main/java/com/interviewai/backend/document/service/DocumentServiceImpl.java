@@ -72,6 +72,15 @@ public class DocumentServiceImpl implements DocumentService {
         userDocumentRepository.delete(document);
     }
 
+    @Override
+    @Transactional
+    public void updateDocumentType(Long userId, Long documentId, DocumentType documentType) {
+        UserDocument document = userDocumentRepository.findByIdAndUserId(documentId, userId)
+                .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+
+        document.updateDocumentType(documentType);
+    }
+
     private void validatePdfFile(MultipartFile file) {
         String contentType = file.getContentType();
         String originalFilename = file.getOriginalFilename();

@@ -14,4 +14,6 @@ public interface DocumentService {
     Page<DocumentListResponseDto> findMyDocuments(Long userId, Pageable pageable);
 
     void deleteDocument(Long userId, Long documentId);
+
+    void updateDocumentType(Long userId, Long documentId, DocumentType documentType);
 }
