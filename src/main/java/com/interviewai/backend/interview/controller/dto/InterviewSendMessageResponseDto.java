@@ -9,4 +9,5 @@ public class InterviewSendMessageResponseDto {
 
     private String aiResponse;
     private boolean isCompleted;
+    private boolean suggestFinish;
 }

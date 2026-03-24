@@ -439,6 +439,99 @@ class InterviewServiceImplTest {
         assertThat(result.getAverageScore()).isNull();
     }
 
+    @Test
+    @DisplayName("기능_테스트_메시지_전송_시_suggestFinish_가_false_로_반환된다")
+    void 기능_테스트_메시지_전송_시_suggestFinish_가_false_로_반환된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "Java는 객체지향 언어입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        String structuredResponse = "{\"nextQuestion\": \"다음 질문입니다.\", \"suggestFinish\": false}";
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn(structuredResponse);
+
+        // when
+        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        assertThat(response.getAiResponse()).isEqualTo("다음 질문입니다.");
+        assertThat(response.isSuggestFinish()).isFalse();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_AI가_충분성_신호를_보내면_suggestFinish_가_true_로_반환된다")
+    void 기능_테스트_AI가_충분성_신호를_보내면_suggestFinish_가_true_로_반환된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "마지막 답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        String structuredResponse = "{\"nextQuestion\": \"수고하셨습니다. 추가로 하실 말씀이 있으신가요?\", \"suggestFinish\": true}";
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn(structuredResponse);
+
+        // when
+        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다. 추가로 하실 말씀이 있으신가요?");
+        assertThat(response.isSuggestFinish()).isTrue();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_AI_응답_파싱_실패시_원본_텍스트를_nextQuestion으로_사용한다")
+    void 기능_테스트_AI_응답_파싱_실패시_원본_텍스트를_nextQuestion으로_사용한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        String plainTextResponse = "JSON이 아닌 일반 텍스트 응답입니다.";
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn(plainTextResponse);
+
+        // when
+        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        assertThat(response.getAiResponse()).isEqualTo(plainTextResponse);
+        assertThat(response.isSuggestFinish()).isFalse();
+    }
+
     private void setField(Object target, String fieldName, Object value) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
