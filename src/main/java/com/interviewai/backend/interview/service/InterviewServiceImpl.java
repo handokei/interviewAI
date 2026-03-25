@@ -291,8 +291,14 @@ public class InterviewServiceImpl implements InterviewService {
         prompt.append("지금은 ").append(levelDescription).append(" 대상의 면접을 진행합니다.\n\n");
 
         if (session.getJobTitle() != null) {
-            prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n\n");
+            prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n");
         }
+
+        String candidateName = session.getUser().getName();
+        if (candidateName != null && !candidateName.isBlank()) {
+            prompt.append("지원자 이름: ").append(candidateName).append("\n");
+        }
+        prompt.append("\n");
 
         prompt.append("""
                 면접 진행 방식:
