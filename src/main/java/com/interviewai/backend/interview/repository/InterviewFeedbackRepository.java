@@ -14,4 +14,6 @@ public interface InterviewFeedbackRepository extends JpaRepository<InterviewFeed
     Double findAverageScoreByUserId(Long userId);
 
     void deleteBySessionId(Long sessionId);
+
+    void deleteAllBySessionIdIn(List<Long> sessionIds);
 }

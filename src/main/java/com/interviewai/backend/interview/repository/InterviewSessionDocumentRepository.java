@@ -10,4 +10,6 @@ public interface InterviewSessionDocumentRepository extends JpaRepository<Interv
     List<InterviewSessionDocument> findBySessionId(Long sessionId);
 
     void deleteBySessionId(Long sessionId);
+
+    void deleteAllBySessionIdIn(List<Long> sessionIds);
 }

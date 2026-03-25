@@ -10,4 +10,6 @@ public interface InterviewMessageRepository extends JpaRepository<InterviewMessa
     List<InterviewMessage> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
 
     void deleteBySessionId(Long sessionId);
+
+    void deleteAllBySessionIdIn(List<Long> sessionIds);
 }
