@@ -12,4 +12,6 @@ public interface InterviewFeedbackRepository extends JpaRepository<InterviewFeed
 
     @Query("SELECT AVG(f.overallScore) FROM InterviewFeedback f WHERE f.session.user.id = :userId")
     Double findAverageScoreByUserId(Long userId);
+
+    void deleteBySessionId(Long sessionId);
 }

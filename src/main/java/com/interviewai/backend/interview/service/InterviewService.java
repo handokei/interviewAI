@@ -22,5 +22,7 @@ public interface InterviewService {
 
     void cancelInterview(Long userId, Long sessionId);
 
+    void deleteInterview(Long userId, Long sessionId);
+
     InterviewStatsResponseDto getMyStats(Long userId);
 }

@@ -83,6 +83,15 @@ public class InterviewController {
         return ResponseEntity.ok(ApiResponse.ok(null, "면접이 취소되었습니다."));
     }
 
+    @Operation(summary = "면접 삭제")
+    @DeleteMapping("/{sessionId}")
+    public ResponseEntity<ApiResponse<Void>> deleteInterview(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long sessionId) {
+        interviewService.deleteInterview(userId, sessionId);
+        return ResponseEntity.ok(ApiResponse.ok(null, "면접이 삭제되었습니다."));
+    }
+
     @Operation(summary = "내 면접 통계 조회")
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<InterviewStatsResponseDto>> getMyStats(
