@@ -291,14 +291,8 @@ public class InterviewServiceImpl implements InterviewService {
         prompt.append("지금은 ").append(levelDescription).append(" 대상의 면접을 진행합니다.\n\n");
 
         if (session.getJobTitle() != null) {
-            prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n");
+            prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n\n");
         }
-
-        String candidateName = session.getUser().getName();
-        if (candidateName != null && !candidateName.isBlank()) {
-            prompt.append("지원자 이름: ").append(candidateName).append("\n");
-        }
-        prompt.append("\n");
 
         prompt.append("""
                 면접 진행 방식:
@@ -307,6 +301,7 @@ public class InterviewServiceImpl implements InterviewService {
                 3. 기술적 깊이를 파악하되 존중하는 태도로 진행한다.
                 4. 답변이 완벽하지 않더라도 바로 정답을 알려주지 말고 더 생각해볼 기회를 준다.
                 5. 면접 중에는 피드백이나 점수를 주지 않는다.
+                6. 지원자의 이름이 제공된 문서(이력서, 포트폴리오 등)에서 확인되면 그 이름으로 호칭하고, 확인되지 않는 경우 '지원자님'으로 호칭한다.
                 """);
 
         for (UserDocument doc : documents) {
