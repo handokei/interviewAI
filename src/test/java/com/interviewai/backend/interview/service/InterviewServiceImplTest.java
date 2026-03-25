@@ -628,6 +628,97 @@ class InterviewServiceImplTest {
         assertThat(response.isSuggestFinish()).isFalse();
     }
 
+    @Test
+    @DisplayName("기능_테스트_여러_면접_세션을_일괄_삭제한다")
+    void 기능_테스트_여러_면접_세션을_일괄_삭제한다() {
+        // given
+        Long userId = 1L;
+        List<Long> sessionIds = List.of(1L, 2L, 3L);
+
+        InterviewSession session1 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+        InterviewSession session2 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.SENIOR).build();
+        InterviewSession session3 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
+        List<InterviewSession> sessions = List.of(session1, session2, session3);
+
+        given(interviewSessionRepository.findAllByIdInAndUserId(sessionIds, userId)).willReturn(sessions);
+
+        // when
+        interviewService.deleteInterviews(userId, sessionIds);
+
+        // then
+        verify(interviewMessageRepository).deleteAllBySessionIdIn(sessionIds);
+        verify(interviewSessionDocumentRepository).deleteAllBySessionIdIn(sessionIds);
+        verify(interviewFeedbackRepository).deleteAllBySessionIdIn(sessionIds);
+        verify(interviewSessionRepository).deleteAll(sessions);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_중복된_ID가_포함되어도_정상_삭제된다")
+    void 기능_테스트_중복된_ID가_포함되어도_정상_삭제된다() {
+        // given
+        Long userId = 1L;
+        List<Long> sessionIdsWithDuplicate = List.of(1L, 2L, 1L);
+        List<Long> uniqueIds = List.of(1L, 2L);
+
+        InterviewSession session1 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+        InterviewSession session2 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.SENIOR).build();
+        List<InterviewSession> sessions = List.of(session1, session2);
+
+        given(interviewSessionRepository.findAllByIdInAndUserId(uniqueIds, userId)).willReturn(sessions);
+
+        // when
+        interviewService.deleteInterviews(userId, sessionIdsWithDuplicate);
+
+        // then
+        verify(interviewMessageRepository).deleteAllBySessionIdIn(uniqueIds);
+        verify(interviewSessionDocumentRepository).deleteAllBySessionIdIn(uniqueIds);
+        verify(interviewFeedbackRepository).deleteAllBySessionIdIn(uniqueIds);
+        verify(interviewSessionRepository).deleteAll(sessions);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_다른_사용자의_세션이_포함되면_예외가_발생한다")
+    void 예외_테스트_다른_사용자의_세션이_포함되면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        List<Long> sessionIds = List.of(1L, 2L, 3L);
+
+        InterviewSession session1 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(interviewSessionRepository.findAllByIdInAndUserId(sessionIds, userId))
+                .willReturn(List.of(session1));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.deleteInterviews(userId, sessionIds))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_세션이_포함되면_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_세션이_포함되면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        List<Long> sessionIds = List.of(1L, 999L);
+
+        InterviewSession session1 = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(interviewSessionRepository.findAllByIdInAndUserId(sessionIds, userId))
+                .willReturn(List.of(session1));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.deleteInterviews(userId, sessionIds))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
     private void setField(Object target, String fieldName, Object value) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
