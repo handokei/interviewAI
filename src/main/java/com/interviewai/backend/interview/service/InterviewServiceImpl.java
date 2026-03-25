@@ -187,6 +187,18 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    @Transactional
+    public void deleteInterview(Long userId, Long sessionId) {
+        InterviewSession session = interviewSessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException(InterviewErrorCode.SESSION_NOT_FOUND));
+
+        interviewMessageRepository.deleteBySessionId(sessionId);
+        interviewSessionDocumentRepository.deleteBySessionId(sessionId);
+        interviewFeedbackRepository.deleteBySessionId(sessionId);
+        interviewSessionRepository.delete(session);
+    }
+
+    @Override
     public Page<InterviewSessionResponseDto> findMySessions(Long userId, Pageable pageable) {
         return interviewSessionRepository.findByUserId(userId, pageable)
                 .map(InterviewSessionResponseDto::from);
