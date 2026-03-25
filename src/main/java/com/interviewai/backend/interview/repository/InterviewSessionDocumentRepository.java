@@ -8,4 +8,6 @@ import java.util.List;
 public interface InterviewSessionDocumentRepository extends JpaRepository<InterviewSessionDocument, Long> {
 
     List<InterviewSessionDocument> findBySessionId(Long sessionId);
+
+    void deleteBySessionId(Long sessionId);
 }
