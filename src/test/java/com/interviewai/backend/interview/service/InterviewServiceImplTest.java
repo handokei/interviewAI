@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -717,6 +718,122 @@ class InterviewServiceImplTest {
         assertThatThrownBy(() -> interviewService.deleteInterviews(userId, sessionIds))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_기본_인터뷰_프롬프트에_호칭_지침이_포함된다")
+    void 기능_테스트_기본_인터뷰_프롬프트에_호칭_지침이_포함된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "jobTitle", "백엔드 개발자");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
+        String prompt = promptCaptor.getValue();
+        assertThat(prompt).contains("지원자의 이름이 제공된 문서");
+        assertThat(prompt).doesNotContain("지원자 이름:");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_JUNIOR_레벨_프롬프트에_신입_개발자_설명이_포함된다")
+    void 기능_테스트_JUNIOR_레벨_프롬프트에_신입_개발자_설명이_포함된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
+        assertThat(promptCaptor.getValue()).contains("신입 개발자");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_SENIOR_레벨_프롬프트에_경력_개발자_설명이_포함된다")
+    void 기능_테스트_SENIOR_레벨_프롬프트에_경력_개발자_설명이_포함된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.SENIOR);
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.SENIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
+        assertThat(promptCaptor.getValue()).contains("경력 개발자");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_이력서_모드_프롬프트에_문서_내용이_포함된다")
+    void 기능_테스트_이력서_모드_프롬프트에_문서_내용이_포함된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+
+        UserDocument resume = mock(UserDocument.class);
+        when(resume.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(resume.getParsedText()).thenReturn("이력서 내용입니다.");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(resume));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
+        String prompt = promptCaptor.getValue();
+        assertThat(prompt).contains("=== 지원자 이력서 ===");
+        assertThat(prompt).contains("이력서 내용입니다.");
     }
 
     private void setField(Object target, String fieldName, Object value) {
