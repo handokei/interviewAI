@@ -24,5 +24,7 @@ public interface InterviewService {
 
     void deleteInterview(Long userId, Long sessionId);
 
+    void deleteInterviews(Long userId, List<Long> sessionIds);
+
     InterviewStatsResponseDto getMyStats(Long userId);
 }

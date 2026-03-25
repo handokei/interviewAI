@@ -92,6 +92,15 @@ public class InterviewController {
         return ResponseEntity.ok(ApiResponse.ok(null, "면접이 삭제되었습니다."));
     }
 
+    @Operation(summary = "면접 다중 삭제")
+    @PostMapping("/batch-delete")
+    public ResponseEntity<ApiResponse<Void>> deleteInterviews(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody InterviewBatchDeleteRequestDto request) {
+        interviewService.deleteInterviews(userId, request.getSessionIds());
+        return ResponseEntity.ok(ApiResponse.ok(null, "선택한 면접이 삭제되었습니다."));
+    }
+
     @Operation(summary = "내 면접 통계 조회")
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<InterviewStatsResponseDto>> getMyStats(
