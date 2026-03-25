@@ -381,6 +381,102 @@ class InterviewServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_진행_중인_면접_세션을_삭제한다")
+    void 기능_테스트_진행_중인_면접_세션을_삭제한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when
+        interviewService.deleteInterview(userId, sessionId);
+
+        // then
+        verify(interviewMessageRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionDocumentRepository).deleteBySessionId(sessionId);
+        verify(interviewFeedbackRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionRepository).delete(session);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_완료된_면접_세션을_삭제한다")
+    void 기능_테스트_완료된_면접_세션을_삭제한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.complete();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when
+        interviewService.deleteInterview(userId, sessionId);
+
+        // then
+        verify(interviewMessageRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionDocumentRepository).deleteBySessionId(sessionId);
+        verify(interviewFeedbackRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionRepository).delete(session);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_취소된_면접_세션을_삭제한다")
+    void 기능_테스트_취소된_면접_세션을_삭제한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.cancel();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+
+        // when
+        interviewService.deleteInterview(userId, sessionId);
+
+        // then
+        verify(interviewMessageRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionDocumentRepository).deleteBySessionId(sessionId);
+        verify(interviewFeedbackRepository).deleteBySessionId(sessionId);
+        verify(interviewSessionRepository).delete(session);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_세션을_삭제하면_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_세션을_삭제하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.deleteInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
     @DisplayName("기능_테스트_인터뷰_통계를_조회한다")
     void 기능_테스트_인터뷰_통계를_조회한다() {
         // given
