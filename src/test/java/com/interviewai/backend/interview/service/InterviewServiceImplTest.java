@@ -33,9 +33,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import reactor.core.publisher.Flux;
 
@@ -44,6 +48,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -938,6 +944,161 @@ class InterviewServiceImplTest {
         assertThatThrownBy(() -> interviewService.streamMessage(userId, sessionId, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("완료");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다")
+    void 기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다() throws IOException {
+        // given
+        SseEmitter emitter = mock(SseEmitter.class);
+
+        // when
+        interviewService.sendTokenToEmitter(emitter, "안녕하세요");
+
+        // then
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다")
+    void 예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다() throws IOException {
+        // given
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.sendTokenToEmitter(emitter, "토큰"))
+                .isInstanceOf(RuntimeException.class)
+                .hasCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_doOnComplete_완료_시_saveAiMessageAndComplete가_호출된다")
+    void 기능_테스트_streamMessage_doOnComplete_완료_시_saveAiMessageAndComplete가_호출된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), eq(sessionId), eq(InterviewLevel.JUNIOR), eq("토큰"));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_doOnComplete_저장_실패_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_doOnComplete_저장_실패_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            throw new RuntimeException("DB 오류");
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(100);
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willReturn(Flux.error(new RuntimeException("스트림 오류")));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_streamChat_예외_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_streamChat_예외_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willThrow(new RuntimeException("API 오류"));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
     }
 
     private void setField(Object target, String fieldName, Object value) {
