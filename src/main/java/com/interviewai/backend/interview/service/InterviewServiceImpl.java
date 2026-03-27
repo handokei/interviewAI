@@ -30,9 +30,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
@@ -134,21 +138,116 @@ public class InterviewServiceImpl implements InterviewService {
                 .map(InterviewSessionDocument::getDocument)
                 .toList();
         String systemPrompt = buildSendMessageSystemPrompt(session, documents, session.getJobPostingContent());
-        String rawResponse = claudeAiClient.chat(systemPrompt, history, request.getContent());
-
-        AiStructuredResponse parsed = parseAiStructuredResponse(rawResponse);
+        String aiResponse = claudeAiClient.chat(systemPrompt, history, request.getContent());
 
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(session)
                 .role(MessageRole.AI)
-                .content(parsed.nextQuestion())
+                .content(aiResponse)
                 .build());
 
+        List<InterviewMessage> allMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        long aiMessageCount = allMessages.stream()
+                .filter(m -> m.getRole() == MessageRole.AI)
+                .count();
+        boolean suggestFinish = switch (session.getLevel()) {
+            case JUNIOR -> aiMessageCount >= 5;
+            case SENIOR -> aiMessageCount >= 7;
+        };
+
         return InterviewSendMessageResponseDto.builder()
-                .aiResponse(parsed.nextQuestion())
+                .aiResponse(aiResponse)
                 .isCompleted(false)
-                .suggestFinish(parsed.suggestFinish())
+                .suggestFinish(suggestFinish)
                 .build();
+    }
+
+    @Override
+    public SseEmitter streamMessage(Long userId, Long sessionId, InterviewSendMessageRequestDto request) {
+        InterviewSession session = interviewSessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException(InterviewErrorCode.SESSION_NOT_FOUND));
+
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
+        }
+
+        saveUserMessage(session, request.getContent());
+
+        List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        List<ChatMessage> history = messages.stream()
+                .map(msg -> new ChatMessage(
+                        msg.getRole() == MessageRole.AI ? "assistant" : "user",
+                        msg.getContent()))
+                .toList();
+
+        List<UserDocument> documents = interviewSessionDocumentRepository.findBySessionId(sessionId)
+                .stream()
+                .map(InterviewSessionDocument::getDocument)
+                .toList();
+        String systemPrompt = buildSendMessageSystemPrompt(session, documents, session.getJobPostingContent());
+
+        SseEmitter emitter = new SseEmitter(120_000L);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.execute(() -> {
+            StringBuilder aiContent = new StringBuilder();
+            try {
+                claudeAiClient.streamChat(systemPrompt, history, request.getContent())
+                        .doOnNext(token -> {
+                            aiContent.append(token);
+                            try {
+                                emitter.send(SseEmitter.event().data(token));
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                        .doOnComplete(() -> {
+                            saveAiMessageAndComplete(emitter, session, sessionId, aiContent.toString());
+                        })
+                        .doOnError(e -> emitter.completeWithError(e))
+                        .subscribe();
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+        executor.shutdown();
+        return emitter;
+    }
+
+    @Transactional
+    public void saveUserMessage(InterviewSession session, String content) {
+        interviewMessageRepository.save(InterviewMessage.builder()
+                .session(session)
+                .role(MessageRole.USER)
+                .content(content)
+                .build());
+    }
+
+    @Transactional
+    public void saveAiMessageAndComplete(SseEmitter emitter, InterviewSession session,
+                                         Long sessionId, String aiContent) {
+        interviewMessageRepository.save(InterviewMessage.builder()
+                .session(session)
+                .role(MessageRole.AI)
+                .content(aiContent)
+                .build());
+
+        List<InterviewMessage> allMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        long aiMessageCount = allMessages.stream()
+                .filter(m -> m.getRole() == MessageRole.AI)
+                .count();
+        boolean suggestFinish = switch (session.getLevel()) {
+            case JUNIOR -> aiMessageCount >= 5;
+            case SENIOR -> aiMessageCount >= 7;
+        };
+
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("done")
+                    .data("{\"suggestFinish\":" + suggestFinish + "}"));
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+        }
     }
 
     @Override
@@ -339,42 +438,7 @@ public class InterviewServiceImpl implements InterviewService {
     private String buildSendMessageSystemPrompt(InterviewSession session, List<UserDocument> documents,
                                                  String jobPostingContent) {
         String base = buildSystemPrompt(session, documents, jobPostingContent, null);
-        String finishCriteria = session.getLevel() == InterviewLevel.JUNIOR
-                ? "- JUNIOR: 최소 5개 이상의 질문을 통해 기술 이해도, 문제 해결, 커뮤니케이션, 경험/사례 영역을 고루 다뤘을 때"
-                : "- SENIOR: 최소 7개 이상의 질문을 통해 기술 이해도, 문제 해결, 커뮤니케이션, 경험/사례 영역에 더해 기술 깊이/아키텍처, 리더십/협업 영역까지 다뤘을 때";
-
-        return base + """
-
-                응답 형식 (반드시 아래 JSON만 반환, 다른 텍스트 없이):
-                {
-                  "nextQuestion": "다음 면접 질문 내용",
-                  "suggestFinish": false
-                }
-
-                suggestFinish를 true로 설정하는 기준:
-                """ + finishCriteria;
-    }
-
-    private record AiStructuredResponse(String nextQuestion, boolean suggestFinish) {
-    }
-
-    private AiStructuredResponse parseAiStructuredResponse(String rawResponse) {
-        try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String jsonStr = rawResponse;
-            int jsonStart = jsonStr.indexOf('{');
-            int jsonEnd = jsonStr.lastIndexOf('}');
-            if (jsonStart >= 0 && jsonEnd >= 0) {
-                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
-                String nextQuestion = node.has("nextQuestion") ? node.get("nextQuestion").asText() : rawResponse;
-                boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
-                return new AiStructuredResponse(nextQuestion, suggestFinish);
-            }
-        } catch (Exception e) {
-            log.warn("AI 구조화 응답 파싱 실패, 원본 텍스트 사용: {}", e.getMessage());
-        }
-        return new AiStructuredResponse(rawResponse, false);
+        return base + "\n다음 면접 질문만 텍스트로 답변해주세요. JSON 형식 불필요.";
     }
 
     private String buildFeedbackSystemPrompt(InterviewSession session) {
