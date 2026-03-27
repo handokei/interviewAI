@@ -83,6 +83,9 @@ class InterviewServiceImplTest {
     @Mock
     private JobCrawlerClient jobCrawlerClient;
 
+    @Mock
+    private InterviewMessageSaver interviewMessageSaver;
+
     private User testUser;
 
     @BeforeEach
@@ -879,7 +882,6 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         lenient().when(claudeAiClient.streamChat(any(), any(), any())).thenReturn(Flux.just("안녕", "하세요"));

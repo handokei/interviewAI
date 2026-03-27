@@ -53,6 +53,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final ClaudeAiClient claudeAiClient;
     private final GithubApiClient githubApiClient;
     private final JobCrawlerClient jobCrawlerClient;
+    private final InterviewMessageSaver interviewMessageSaver;
 
     @Override
     @Transactional
@@ -171,7 +172,7 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
-        saveUserMessage(sessionId, request.getContent());
+        interviewMessageSaver.saveUserMessage(sessionId, request.getContent());
 
         List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         List<ChatMessage> history = messages.stream()
@@ -201,7 +202,7 @@ public class InterviewServiceImpl implements InterviewService {
                             }
                         })
                         .doOnComplete(() -> {
-                            saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
+                            interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
                         })
                         .doOnError(e -> emitter.completeWithError(e))
                         .subscribe();
@@ -211,45 +212,6 @@ public class InterviewServiceImpl implements InterviewService {
         });
         executor.shutdown();
         return emitter;
-    }
-
-    @Transactional
-    public void saveUserMessage(Long sessionId, String content) {
-        InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
-        interviewMessageRepository.save(InterviewMessage.builder()
-                .session(sessionRef)
-                .role(MessageRole.USER)
-                .content(content)
-                .build());
-    }
-
-    @Transactional
-    public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
-                                         InterviewLevel level, String aiContent) {
-        InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
-        interviewMessageRepository.save(InterviewMessage.builder()
-                .session(sessionRef)
-                .role(MessageRole.AI)
-                .content(aiContent)
-                .build());
-
-        List<InterviewMessage> allMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        long aiMessageCount = allMessages.stream()
-                .filter(m -> m.getRole() == MessageRole.AI)
-                .count();
-        boolean suggestFinish = switch (level) {
-            case JUNIOR -> aiMessageCount >= 5;
-            case SENIOR -> aiMessageCount >= 7;
-        };
-
-        try {
-            emitter.send(SseEmitter.event()
-                    .name("done")
-                    .data("{\"suggestFinish\":" + suggestFinish + "}"));
-            emitter.complete();
-        } catch (IOException e) {
-            emitter.completeWithError(e);
-        }
     }
 
     @Override
