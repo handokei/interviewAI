@@ -11,9 +11,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -40,6 +42,15 @@ public class InterviewController {
             @PathVariable Long sessionId,
             @Valid @RequestBody InterviewSendMessageRequestDto request) {
         return ResponseEntity.ok(ApiResponse.ok(interviewService.sendMessage(userId, sessionId, request)));
+    }
+
+    @Operation(summary = "메시지 전송 (답변) — 스트리밍")
+    @PostMapping(value = "/{sessionId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamMessage(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long sessionId,
+            @Valid @RequestBody InterviewSendMessageRequestDto request) {
+        return interviewService.streamMessage(userId, sessionId, request);
     }
 
     @Operation(summary = "면접 종료 및 피드백 생성")
