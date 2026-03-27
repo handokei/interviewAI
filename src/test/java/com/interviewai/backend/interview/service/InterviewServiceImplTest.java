@@ -33,15 +33,24 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,6 +88,9 @@ class InterviewServiceImplTest {
 
     @Mock
     private JobCrawlerClient jobCrawlerClient;
+
+    @Mock
+    private InterviewMessageSaver interviewMessageSaver;
 
     private User testUser;
 
@@ -537,8 +549,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_메시지_전송_시_suggestFinish_가_false_로_반환된다")
-    void 기능_테스트_메시지_전송_시_suggestFinish_가_false_로_반환된다() {
+    @DisplayName("기능_테스트_메시지_전송_시_AI_응답이_그대로_반환된다")
+    void 기능_테스트_메시지_전송_시_AI_응답이_그대로_반환된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -551,25 +563,25 @@ class InterviewServiceImplTest {
                 .level(InterviewLevel.JUNIOR)
                 .build();
 
-        String structuredResponse = "{\"nextQuestion\": \"다음 질문입니다.\", \"suggestFinish\": false}";
+        String aiResponse = "다음 질문입니다.";
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any())).willReturn(structuredResponse);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn(aiResponse);
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
 
         // then
-        assertThat(response.getAiResponse()).isEqualTo("다음 질문입니다.");
+        assertThat(response.getAiResponse()).isEqualTo(aiResponse);
         assertThat(response.isSuggestFinish()).isFalse();
     }
 
     @Test
-    @DisplayName("기능_테스트_AI가_충분성_신호를_보내면_suggestFinish_가_true_로_반환된다")
-    void 기능_테스트_AI가_충분성_신호를_보내면_suggestFinish_가_true_로_반환된다() {
+    @DisplayName("기능_테스트_JUNIOR_AI_메시지_6개_이상이면_suggestFinish_가_true_로_반환된다")
+    void 기능_테스트_JUNIOR_AI_메시지_6개_이상이면_suggestFinish_가_true_로_반환된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -582,51 +594,79 @@ class InterviewServiceImplTest {
                 .level(InterviewLevel.JUNIOR)
                 .build();
 
-        String structuredResponse = "{\"nextQuestion\": \"수고하셨습니다. 추가로 하실 말씀이 있으신가요?\", \"suggestFinish\": true}";
+        List<InterviewMessage> existingMessages = List.of(
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q1").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A1").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q2").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A2").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q3").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A3").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q4").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A4").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q6").build()
+        );
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(existingMessages);
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any())).willReturn(structuredResponse);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("수고하셨습니다.");
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
 
         // then
-        assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다. 추가로 하실 말씀이 있으신가요?");
+        assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다.");
         assertThat(response.isSuggestFinish()).isTrue();
     }
 
     @Test
-    @DisplayName("기능_테스트_AI_응답_파싱_실패시_원본_텍스트를_nextQuestion으로_사용한다")
-    void 기능_테스트_AI_응답_파싱_실패시_원본_텍스트를_nextQuestion으로_사용한다() {
+    @DisplayName("기능_테스트_SENIOR_AI_메시지_8개_이상이면_suggestFinish_가_true_로_반환된다")
+    void 기능_테스트_SENIOR_AI_메시지_8개_이상이면_suggestFinish_가_true_로_반환된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
         InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
-        setField(request, "content", "답변입니다.");
+        setField(request, "content", "마지막 답변입니다.");
 
         InterviewSession session = InterviewSession.builder()
                 .user(testUser)
                 .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.JUNIOR)
+                .level(InterviewLevel.SENIOR)
                 .build();
 
-        String plainTextResponse = "JSON이 아닌 일반 텍스트 응답입니다.";
+        List<InterviewMessage> existingMessages = List.of(
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q1").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A1").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q2").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A2").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q3").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A3").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q4").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A4").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q6").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A6").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q7").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A7").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q8").build()
+        );
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(existingMessages);
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any())).willReturn(plainTextResponse);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("수고하셨습니다.");
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
 
         // then
-        assertThat(response.getAiResponse()).isEqualTo(plainTextResponse);
-        assertThat(response.isSuggestFinish()).isFalse();
+        assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다.");
+        assertThat(response.isSuggestFinish()).isTrue();
     }
 
     @Test
@@ -834,6 +874,231 @@ class InterviewServiceImplTest {
         String prompt = promptCaptor.getValue();
         assertThat(prompt).contains("=== 지원자 이력서 ===");
         assertThat(prompt).contains("이력서 내용입니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_호출_시_SseEmitter_를_반환한다")
+    void 기능_테스트_streamMessage_호출_시_SseEmitter_를_반환한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "Java에 대해 설명해주세요.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        lenient().when(claudeAiClient.streamChat(any(), any(), any())).thenReturn(Flux.just("안녕", "하세요"));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_존재하지_않는_세션에_streamMessage_호출_시_예외가_발생한다")
+    void 예외_테스트_존재하지_않는_세션에_streamMessage_호출_시_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamMessage(userId, sessionId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_완료된_세션에_streamMessage_호출_시_예외가_발생한다")
+    void 예외_테스트_완료된_세션에_streamMessage_호출_시_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession completedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        completedSession.complete();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(completedSession));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamMessage(userId, sessionId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("완료");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다")
+    void 기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다() throws IOException {
+        // given
+        SseEmitter emitter = mock(SseEmitter.class);
+
+        // when
+        interviewService.sendTokenToEmitter(emitter, "안녕하세요");
+
+        // then
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다")
+    void 예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다() throws IOException {
+        // given
+        SseEmitter emitter = mock(SseEmitter.class);
+        doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.sendTokenToEmitter(emitter, "토큰"))
+                .isInstanceOf(RuntimeException.class)
+                .hasCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_doOnComplete_완료_시_saveAiMessageAndComplete가_호출된다")
+    void 기능_테스트_streamMessage_doOnComplete_완료_시_saveAiMessageAndComplete가_호출된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), eq(sessionId), eq(InterviewLevel.JUNIOR), eq("토큰"));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_doOnComplete_저장_실패_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_doOnComplete_저장_실패_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            throw new RuntimeException("DB 오류");
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(100);
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willReturn(Flux.error(new RuntimeException("스트림 오류")));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_streamChat_예외_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamMessage_streamChat_예외_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willThrow(new RuntimeException("API 오류"));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
     }
 
     private void setField(Object target, String fieldName, Object value) {

@@ -3,6 +3,7 @@ package com.interviewai.backend.interview.service;
 import com.interviewai.backend.interview.controller.dto.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -11,6 +12,8 @@ public interface InterviewService {
     InterviewStartResponseDto startInterview(Long userId, InterviewStartRequestDto request);
 
     InterviewSendMessageResponseDto sendMessage(Long userId, Long sessionId, InterviewSendMessageRequestDto request);
+
+    SseEmitter streamMessage(Long userId, Long sessionId, InterviewSendMessageRequestDto request);
 
     InterviewFeedbackResponseDto finishInterview(Long userId, Long sessionId);
 
