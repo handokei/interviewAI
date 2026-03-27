@@ -171,7 +171,7 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
-        saveUserMessage(session, request.getContent());
+        saveUserMessage(sessionId, request.getContent());
 
         List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         List<ChatMessage> history = messages.stream()
@@ -201,7 +201,7 @@ public class InterviewServiceImpl implements InterviewService {
                             }
                         })
                         .doOnComplete(() -> {
-                            saveAiMessageAndComplete(emitter, session, sessionId, aiContent.toString());
+                            saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
                         })
                         .doOnError(e -> emitter.completeWithError(e))
                         .subscribe();
@@ -214,19 +214,21 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Transactional
-    public void saveUserMessage(InterviewSession session, String content) {
+    public void saveUserMessage(Long sessionId, String content) {
+        InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
         interviewMessageRepository.save(InterviewMessage.builder()
-                .session(session)
+                .session(sessionRef)
                 .role(MessageRole.USER)
                 .content(content)
                 .build());
     }
 
     @Transactional
-    public void saveAiMessageAndComplete(SseEmitter emitter, InterviewSession session,
-                                         Long sessionId, String aiContent) {
+    public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
+                                         InterviewLevel level, String aiContent) {
+        InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
         interviewMessageRepository.save(InterviewMessage.builder()
-                .session(session)
+                .session(sessionRef)
                 .role(MessageRole.AI)
                 .content(aiContent)
                 .build());
@@ -235,7 +237,7 @@ public class InterviewServiceImpl implements InterviewService {
         long aiMessageCount = allMessages.stream()
                 .filter(m -> m.getRole() == MessageRole.AI)
                 .count();
-        boolean suggestFinish = switch (session.getLevel()) {
+        boolean suggestFinish = switch (level) {
             case JUNIOR -> aiMessageCount >= 5;
             case SENIOR -> aiMessageCount >= 7;
         };
