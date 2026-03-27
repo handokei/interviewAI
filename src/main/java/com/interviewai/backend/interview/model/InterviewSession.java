@@ -37,8 +37,10 @@ public class InterviewSession {
     @Column(nullable = false)
     private InterviewStatus status;
 
+    @Column(columnDefinition = "TEXT")
     private String jobTitle;
 
+    @Column(columnDefinition = "TEXT")
     private String jobPostingUrl;
 
     @Column(columnDefinition = "TEXT")
