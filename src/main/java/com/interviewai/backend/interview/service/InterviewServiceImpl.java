@@ -195,25 +195,14 @@ public class InterviewServiceImpl implements InterviewService {
                 claudeAiClient.streamChat(systemPrompt, history, request.getContent())
                         .doOnNext(token -> {
                             aiContent.append(token);
-                            try {
-                                emitter.send(SseEmitter.event().data(token));
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
+                            sendTokenToEmitter(emitter, token);
                         })
                         .doOnComplete(() -> {
                             try {
                                 interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
                             } catch (Exception e) {
                                 log.error("AI 메시지 저장 실패, emitter 강제 종료", e);
-                                try {
-                                    emitter.send(SseEmitter.event()
-                                            .name("done")
-                                            .data("{\"suggestFinish\":false}"));
-                                    emitter.complete();
-                                } catch (IOException ioEx) {
-                                    emitter.completeWithError(ioEx);
-                                }
+                                emitter.completeWithError(e);
                             }
                         })
                         .doOnError(e -> emitter.completeWithError(e))
@@ -447,6 +436,14 @@ public class InterviewServiceImpl implements InterviewService {
             sb.append(message.getContent()).append("\n\n");
         }
         return sb.toString();
+    }
+
+    void sendTokenToEmitter(SseEmitter emitter, String token) {
+        try {
+            emitter.send(SseEmitter.event().data(token));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private InterviewFeedback parseFeedbackAndSave(InterviewSession session, String feedbackJson) {
