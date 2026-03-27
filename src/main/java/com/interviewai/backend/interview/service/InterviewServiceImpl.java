@@ -152,8 +152,8 @@ public class InterviewServiceImpl implements InterviewService {
                 .filter(m -> m.getRole() == MessageRole.AI)
                 .count();
         boolean suggestFinish = switch (session.getLevel()) {
-            case JUNIOR -> aiMessageCount >= 5;
-            case SENIOR -> aiMessageCount >= 7;
+            case JUNIOR -> aiMessageCount >= 6;
+            case SENIOR -> aiMessageCount >= 8;
         };
 
         return InterviewSendMessageResponseDto.builder()
@@ -202,7 +202,19 @@ public class InterviewServiceImpl implements InterviewService {
                             }
                         })
                         .doOnComplete(() -> {
-                            interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
+                            try {
+                                interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
+                            } catch (Exception e) {
+                                log.error("AI 메시지 저장 실패, emitter 강제 종료", e);
+                                try {
+                                    emitter.send(SseEmitter.event()
+                                            .name("done")
+                                            .data("{\"suggestFinish\":false}"));
+                                    emitter.complete();
+                                } catch (IOException ioEx) {
+                                    emitter.completeWithError(ioEx);
+                                }
+                            }
                         })
                         .doOnError(e -> emitter.completeWithError(e))
                         .subscribe();
