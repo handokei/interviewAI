@@ -574,8 +574,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_JUNIOR_AI_메시지_5개_이상이면_suggestFinish_가_true_로_반환된다")
-    void 기능_테스트_JUNIOR_AI_메시지_5개_이상이면_suggestFinish_가_true_로_반환된다() {
+    @DisplayName("기능_테스트_JUNIOR_AI_메시지_6개_이상이면_suggestFinish_가_true_로_반환된다")
+    void 기능_테스트_JUNIOR_AI_메시지_6개_이상이면_suggestFinish_가_true_로_반환된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -597,7 +597,9 @@ class InterviewServiceImplTest {
                 InterviewMessage.builder().session(session).role(MessageRole.USER).content("A3").build(),
                 InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q4").build(),
                 InterviewMessage.builder().session(session).role(MessageRole.USER).content("A4").build(),
-                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q5").build()
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A5").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q6").build()
         );
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
@@ -615,8 +617,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_SENIOR_AI_메시지_7개_이상이면_suggestFinish_가_true_로_반환된다")
-    void 기능_테스트_SENIOR_AI_메시지_7개_이상이면_suggestFinish_가_true_로_반환된다() {
+    @DisplayName("기능_테스트_SENIOR_AI_메시지_8개_이상이면_suggestFinish_가_true_로_반환된다")
+    void 기능_테스트_SENIOR_AI_메시지_8개_이상이면_suggestFinish_가_true_로_반환된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -642,7 +644,9 @@ class InterviewServiceImplTest {
                 InterviewMessage.builder().session(session).role(MessageRole.USER).content("A5").build(),
                 InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q6").build(),
                 InterviewMessage.builder().session(session).role(MessageRole.USER).content("A6").build(),
-                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q7").build()
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q7").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.USER).content("A7").build(),
+                InterviewMessage.builder().session(session).role(MessageRole.AI).content("Q8").build()
         );
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
