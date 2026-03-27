@@ -9,6 +9,7 @@ import com.interviewai.backend.interview.repository.InterviewSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -23,7 +24,7 @@ public class InterviewMessageSaver {
     private final InterviewSessionRepository interviewSessionRepository;
     private final InterviewMessageRepository interviewMessageRepository;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveUserMessage(Long sessionId, String content) {
         InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
         interviewMessageRepository.save(InterviewMessage.builder()
@@ -33,7 +34,7 @@ public class InterviewMessageSaver {
                 .build());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
                                          InterviewLevel level, String aiContent) {
         InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
