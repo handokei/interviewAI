@@ -49,8 +49,8 @@ public class InterviewMessageSaver {
                 .filter(m -> m.getRole() == MessageRole.AI)
                 .count();
         boolean suggestFinish = switch (level) {
-            case JUNIOR -> aiMessageCount >= 5;
-            case SENIOR -> aiMessageCount >= 7;
+            case JUNIOR -> aiMessageCount >= 6;
+            case SENIOR -> aiMessageCount >= 8;
         };
 
         try {
