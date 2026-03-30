@@ -1,6 +1,5 @@
 package com.interviewai.backend.interview.service;
 
-import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
@@ -14,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.List;
 
 @Slf4j
 @Service
@@ -36,7 +34,7 @@ public class InterviewMessageSaver {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
-                                         InterviewLevel level, String aiContent) {
+                                         String aiContent, InterviewEvaluation eval) {
         InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(sessionRef)
@@ -44,19 +42,15 @@ public class InterviewMessageSaver {
                 .content(aiContent)
                 .build());
 
-        List<InterviewMessage> allMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        long aiMessageCount = allMessages.stream()
-                .filter(m -> m.getRole() == MessageRole.AI)
-                .count();
-        boolean suggestFinish = switch (level) {
-            case JUNIOR -> aiMessageCount >= 6;
-            case SENIOR -> aiMessageCount >= 8;
-        };
+        String qualityHintEscaped = eval.qualityHint().replace("\\", "\\\\").replace("\"", "\\\"");
+        String doneData = "{\"suggestFinish\":" + eval.suggestFinish()
+                + ",\"qualityScore\":" + eval.qualityScore()
+                + ",\"qualityHint\":\"" + qualityHintEscaped + "\"}";
 
         try {
             emitter.send(SseEmitter.event()
                     .name("done")
-                    .data("{\"suggestFinish\":" + suggestFinish + "}"));
+                    .data(doneData));
             emitter.complete();
         } catch (IOException e) {
             emitter.completeWithError(e);
