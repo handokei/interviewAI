@@ -8,6 +8,7 @@ import com.interviewai.backend.common.exception.BusinessException;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.InterviewErrorCode;
 import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.enums.InterviewMode;
@@ -153,7 +154,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .aiResponse(aiResponse)
                 .isCompleted(false)
                 .suggestFinish(eval.suggestFinish())
-                .qualityScore(eval.qualityScore())
+                .answerLevel(eval.answerLevel())
                 .qualityHint(eval.qualityHint())
                 .build();
     }
@@ -307,7 +308,6 @@ public class InterviewServiceImpl implements InterviewService {
         long totalCount = interviewSessionRepository.countByUserId(userId);
         long completedCount = interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED);
         long cancelledCount = interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED);
-        Double averageScore = interviewFeedbackRepository.findAverageScoreByUserId(userId);
 
         java.util.Map<String, Long> modeDistribution = new java.util.LinkedHashMap<>();
         for (InterviewMode mode : InterviewMode.values()) {
@@ -323,7 +323,6 @@ public class InterviewServiceImpl implements InterviewService {
                 .totalCount(totalCount)
                 .completedCount(completedCount)
                 .cancelledCount(cancelledCount)
-                .averageScore(averageScore)
                 .modeDistribution(modeDistribution)
                 .levelDistribution(levelDistribution)
                 .build();
@@ -403,25 +402,24 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     private String buildFeedbackSystemPrompt(InterviewSession session) {
+        String target = session.getLevel() == InterviewLevel.JUNIOR ? "신입 개발자" : "경력 개발자";
         return """
                 당신은 기술 면접을 평가하는 전문가입니다.
                 다음 면접 대화를 분석하여 구조화된 피드백을 제공해주세요.
 
                 다음 형식으로 정확히 응답해주세요 (JSON 형식):
                 {
-                  "overallScore": 75,
+                  "overallLevel": "NEEDS_IMPROVEMENT",
                   "strengths": "잘한 점 1.\\n잘한 점 2.\\n잘한 점 3.",
                   "improvements": "개선점 1.\\n개선점 2.\\n개선점 3.",
                   "fullReport": "종합 평가 내용..."
                 }
 
-                점수는 0-100 사이의 정수로, 다음 기준으로 평가합니다:
-                - 기술 지식의 정확성 (40점)
-                - 의사소통 능력 (20점)
-                - 문제 해결 접근법 (20점)
-                - 경험 및 예시의 적절성 (20점)
-                """ + "대상: " + (session.getLevel() == com.interviewai.backend.interview.enums.InterviewLevel.JUNIOR
-                ? "신입 개발자" : "경력 개발자");
+                overallLevel은 반드시 다음 중 하나만 사용하세요:
+                - PASS: 기술 이해도, 의사소통, 문제 해결 능력 모두 충분함
+                - NEEDS_IMPROVEMENT: 일부 중요 영역에서 보완이 필요함
+                - STUDY_REQUIRED: 핵심 기술 이해 및 설명 능력이 전반적으로 부족함
+                """ + "대상: " + target;
     }
 
     private String buildConversationText(List<InterviewMessage> messages) {
@@ -460,12 +458,15 @@ public class InterviewServiceImpl implements InterviewService {
                 위 대화를 바탕으로 다음 JSON 형식으로만 응답하세요:
                 {
                   "suggestFinish": false,
-                  "qualityScore": 75,
+                  "answerLevel": "NEEDS_IMPROVEMENT",
                   "qualityHint": "시간복잡도 설명은 좋았으나 공간복잡도 언급이 부족했어요."
                 }
 
                 - suggestFinish: 주요 기술 주제가 충분히 다루어졌으면 true, 아직 부족하면 false
-                - qualityScore: 0-100 정수 (지원자 마지막 답변의 기술 정확성과 완성도)
+                - answerLevel: 지원자 마지막 답변 수준 (반드시 다음 중 하나만 사용)
+                  * PASS: 핵심 개념을 정확히 이해하고 설명할 수 있음
+                  * NEEDS_IMPROVEMENT: 기본 개념은 알지만 중요한 부분이 빠짐
+                  * STUDY_REQUIRED: 개념 이해가 부족하거나 핵심을 놓침
                 - qualityHint: 한국어 한 줄 피드백 (지원자 마지막 답변에 대해, 100자 이내)
                 """);
         return prompt.toString();
@@ -481,9 +482,15 @@ public class InterviewServiceImpl implements InterviewService {
                 jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
                 com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
                 boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
-                int qualityScore = node.has("qualityScore") ? node.get("qualityScore").asInt(50) : 50;
+                String levelStr = node.has("answerLevel") ? node.get("answerLevel").asText() : "NEEDS_IMPROVEMENT";
+                AnswerLevel answerLevel;
+                try {
+                    answerLevel = AnswerLevel.valueOf(levelStr);
+                } catch (IllegalArgumentException ex) {
+                    answerLevel = AnswerLevel.NEEDS_IMPROVEMENT;
+                }
                 String qualityHint = node.has("qualityHint") ? node.get("qualityHint").asText() : "답변이 접수되었습니다.";
-                return new InterviewEvaluation(suggestFinish, qualityScore, qualityHint);
+                return new InterviewEvaluation(suggestFinish, answerLevel, qualityHint);
             }
         } catch (Exception e) {
             log.warn("평가 JSON 파싱 실패, fallback 사용: {}", e.getMessage());
@@ -500,7 +507,7 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     private InterviewFeedback parseFeedbackAndSave(InterviewSession session, String feedbackJson) {
-        int overallScore = 70;
+        AnswerLevel overallLevel = AnswerLevel.NEEDS_IMPROVEMENT;
         String strengths = "분석 중...";
         String improvements = "분석 중...";
         String fullReport = feedbackJson;
@@ -513,7 +520,12 @@ public class InterviewServiceImpl implements InterviewService {
             if (jsonStart >= 0 && jsonEnd >= 0) {
                 jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
                 com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
-                overallScore = node.has("overallScore") ? node.get("overallScore").asInt(70) : 70;
+                String levelStr = node.has("overallLevel") ? node.get("overallLevel").asText() : "NEEDS_IMPROVEMENT";
+                try {
+                    overallLevel = AnswerLevel.valueOf(levelStr);
+                } catch (IllegalArgumentException ex) {
+                    overallLevel = AnswerLevel.NEEDS_IMPROVEMENT;
+                }
                 strengths = node.has("strengths") ? node.get("strengths").asText() : strengths;
                 improvements = node.has("improvements") ? node.get("improvements").asText() : improvements;
                 fullReport = node.has("fullReport") ? node.get("fullReport").asText() : feedbackJson;
@@ -524,7 +536,7 @@ public class InterviewServiceImpl implements InterviewService {
 
         InterviewFeedback feedback = InterviewFeedback.builder()
                 .session(session)
-                .overallScore(overallScore)
+                .overallLevel(overallLevel)
                 .strengths(strengths)
                 .improvements(improvements)
                 .fullReport(fullReport)
