@@ -309,6 +309,141 @@ class InterviewServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_finishInterview_PASS_overallLevel로_피드백을_저장한다")
+    void 기능_테스트_finishInterview_PASS_overallLevel로_피드백을_저장한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"이해도가 높습니다.\",\"improvements\":\"없음\",\"fullReport\":\"훌륭합니다.\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(result.getStrengths()).isEqualTo("이해도가 높습니다.");
+        verify(interviewFeedbackRepository).save(any(InterviewFeedback.class));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_STUDY_REQUIRED_overallLevel로_피드백을_저장한다")
+    void 기능_테스트_finishInterview_STUDY_REQUIRED_overallLevel로_피드백을_저장한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.SENIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("{\"overallLevel\":\"STUDY_REQUIRED\",\"strengths\":\"성실한 태도\",\"improvements\":\"기초 개념 보완 필요\",\"fullReport\":\"추가 학습이 필요합니다.\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.STUDY_REQUIRED);
+        assertThat(result.getImprovements()).isEqualTo("기초 개념 보완 필요");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_JSON_파싱_실패시_NEEDS_IMPROVEMENT_fallback으로_저장된다")
+    void 기능_테스트_finishInterview_JSON_파싱_실패시_NEEDS_IMPROVEMENT_fallback으로_저장된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any())).willReturn("invalid json");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_잘못된_overallLevel_값이면_NEEDS_IMPROVEMENT_fallback으로_저장된다")
+    void 기능_테스트_finishInterview_잘못된_overallLevel_값이면_NEEDS_IMPROVEMENT_fallback으로_저장된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("{\"overallLevel\":\"INVALID_VALUE\",\"strengths\":\"좋아요\",\"improvements\":\"없음\",\"fullReport\":\"좋습니다.\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(result.getStrengths()).isEqualTo("좋아요");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_finishInterview_이미_완료된_세션이면_예외가_발생한다")
+    void 예외_테스트_finishInterview_이미_완료된_세션이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession completedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        completedSession.complete();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(completedSession));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.finishInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("완료");
+    }
+
+    @Test
     @DisplayName("기능_테스트_진행_중인_면접_세션을_취소한다")
     void 기능_테스트_진행_중인_면접_세션을_취소한다() {
         // given
