@@ -1,5 +1,6 @@
 package com.interviewai.backend.interview.service;
 
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
@@ -58,7 +59,7 @@ class InterviewMessageSaverTest {
         Long sessionId = 1L;
         SseEmitter emitter = mock(SseEmitter.class);
         InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(false, 70, "좋은 답변이었습니다.");
+        InterviewEvaluation eval = new InterviewEvaluation(false, AnswerLevel.NEEDS_IMPROVEMENT, "좋은 답변이었습니다.");
 
         given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
@@ -79,7 +80,7 @@ class InterviewMessageSaverTest {
         Long sessionId = 1L;
         SseEmitter emitter = mock(SseEmitter.class);
         InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(true, 85, "전반적으로 훌륭한 답변이었습니다.");
+        InterviewEvaluation eval = new InterviewEvaluation(true, AnswerLevel.PASS, "전반적으로 훌륭한 답변이었습니다.");
 
         given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
@@ -94,13 +95,13 @@ class InterviewMessageSaverTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_qualityScore와_qualityHint가_SSE_done_이벤트에_포함된다")
-    void 기능_테스트_qualityScore와_qualityHint가_SSE_done_이벤트에_포함된다() throws IOException {
+    @DisplayName("기능_테스트_answerLevel과_qualityHint가_SSE_done_이벤트에_포함된다")
+    void 기능_테스트_answerLevel과_qualityHint가_SSE_done_이벤트에_포함된다() throws IOException {
         // given
         Long sessionId = 1L;
         SseEmitter emitter = mock(SseEmitter.class);
         InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(false, 75, "시간복잡도 언급이 좋았어요.");
+        InterviewEvaluation eval = new InterviewEvaluation(false, AnswerLevel.PASS, "시간복잡도 언급이 좋았어요.");
 
         given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);

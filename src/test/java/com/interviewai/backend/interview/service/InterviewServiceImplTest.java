@@ -498,8 +498,6 @@ class InterviewServiceImplTest {
         given(interviewSessionRepository.countByUserId(userId)).willReturn(10L);
         given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED)).willReturn(7L);
         given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED)).willReturn(2L);
-        given(interviewFeedbackRepository.findAverageScoreByUserId(userId)).willReturn(78.5);
-
         given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.BASIC)).willReturn(5L);
         given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.RESUME)).willReturn(3L);
         given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.COMPANY)).willReturn(2L);
@@ -514,7 +512,6 @@ class InterviewServiceImplTest {
         assertThat(result.getTotalCount()).isEqualTo(10L);
         assertThat(result.getCompletedCount()).isEqualTo(7L);
         assertThat(result.getCancelledCount()).isEqualTo(2L);
-        assertThat(result.getAverageScore()).isEqualTo(78.5);
         assertThat(result.getModeDistribution()).containsEntry("BASIC", 5L);
         assertThat(result.getModeDistribution()).containsEntry("RESUME", 3L);
         assertThat(result.getModeDistribution()).containsEntry("COMPANY", 2L);
@@ -523,15 +520,14 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_피드백이_없을때_평균점수가_null이다")
-    void 기능_테스트_피드백이_없을때_평균점수가_null이다() {
+    @DisplayName("기능_테스트_인터뷰_세션이_없을때_통계가_모두_0이다")
+    void 기능_테스트_인터뷰_세션이_없을때_통계가_모두_0이다() {
         // given
         Long userId = 1L;
 
         given(interviewSessionRepository.countByUserId(userId)).willReturn(0L);
         given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.COMPLETED)).willReturn(0L);
         given(interviewSessionRepository.countByUserIdAndStatus(userId, InterviewStatus.CANCELLED)).willReturn(0L);
-        given(interviewFeedbackRepository.findAverageScoreByUserId(userId)).willReturn(null);
 
         given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.BASIC)).willReturn(0L);
         given(interviewSessionRepository.countByUserIdAndMode(userId, InterviewMode.RESUME)).willReturn(0L);
@@ -545,7 +541,7 @@ class InterviewServiceImplTest {
 
         // then
         assertThat(result.getTotalCount()).isZero();
-        assertThat(result.getAverageScore()).isNull();
+        assertThat(result.getCompletedCount()).isZero();
     }
 
     @Test
@@ -570,7 +566,7 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn(aiResponse, "{\"suggestFinish\":false,\"qualityScore\":70,\"qualityHint\":\"좋은 답변이었습니다.\"}");
+                .willReturn(aiResponse, "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
@@ -578,7 +574,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response.getAiResponse()).isEqualTo(aiResponse);
         assertThat(response.isSuggestFinish()).isFalse();
-        assertThat(response.getQualityScore()).isEqualTo(70);
+        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
         assertThat(response.getQualityHint()).isEqualTo("좋은 답변이었습니다.");
     }
 
@@ -602,7 +598,7 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("수고하셨습니다.", "{\"suggestFinish\":true,\"qualityScore\":88,\"qualityHint\":\"전반적으로 훌륭했습니다.\"}");
+                .willReturn("수고하셨습니다.", "{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"전반적으로 훌륭했습니다.\"}");
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
@@ -610,7 +606,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다.");
         assertThat(response.isSuggestFinish()).isTrue();
-        assertThat(response.getQualityScore()).isEqualTo(88);
+        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.PASS);
     }
 
     @Test
@@ -640,7 +636,7 @@ class InterviewServiceImplTest {
 
         // then
         assertThat(response.isSuggestFinish()).isFalse();
-        assertThat(response.getQualityScore()).isEqualTo(50);
+        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
         assertThat(response.getQualityHint()).isEqualTo("답변이 접수되었습니다.");
     }
 
@@ -665,7 +661,7 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("다음 질문입니다.", "{\"suggestFinish\":false,\"qualityScore\":70,\"qualityHint\":\"좋았어요.\"}");
+                .willReturn("다음 질문입니다.", "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋았어요.\"}");
 
         // when & then (프롬프트 내용 검증은 실제 호출을 통해 간접 확인)
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
@@ -684,14 +680,14 @@ class InterviewServiceImplTest {
                 .build();
 
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":true,\"qualityScore\":82,\"qualityHint\":\"정확한 답변이었습니다.\"}");
+                .willReturn("{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"정확한 답변이었습니다.\"}");
 
         // when
         InterviewEvaluation eval = interviewService.evaluateWithAi(session, List.of(), "AI 응답");
 
         // then
         assertThat(eval.suggestFinish()).isTrue();
-        assertThat(eval.qualityScore()).isEqualTo(82);
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
         assertThat(eval.qualityHint()).isEqualTo("정확한 답변이었습니다.");
     }
 
@@ -1024,7 +1020,7 @@ class InterviewServiceImplTest {
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":false,\"qualityScore\":70,\"qualityHint\":\"좋은 답변이었습니다.\"}");
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
 
         // when
         interviewService.streamMessage(userId, sessionId, request);
@@ -1060,7 +1056,7 @@ class InterviewServiceImplTest {
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
         given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":false,\"qualityScore\":70,\"qualityHint\":\"좋은 답변이었습니다.\"}");
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
 
         // when
         interviewService.streamMessage(userId, sessionId, request);
