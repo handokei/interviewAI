@@ -12,7 +12,6 @@ public class InterviewStatsResponseDto {
     private long totalCount;
     private long completedCount;
     private long cancelledCount;
-    private Double averageScore;
     private Map<String, Long> modeDistribution;
     private Map<String, Long> levelDistribution;
 }
