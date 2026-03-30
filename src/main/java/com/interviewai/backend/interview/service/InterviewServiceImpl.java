@@ -147,19 +147,14 @@ public class InterviewServiceImpl implements InterviewService {
                 .content(aiResponse)
                 .build());
 
-        List<InterviewMessage> allMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        long aiMessageCount = allMessages.stream()
-                .filter(m -> m.getRole() == MessageRole.AI)
-                .count();
-        boolean suggestFinish = switch (session.getLevel()) {
-            case JUNIOR -> aiMessageCount >= 6;
-            case SENIOR -> aiMessageCount >= 8;
-        };
+        InterviewEvaluation eval = evaluateWithAi(session, history, aiResponse);
 
         return InterviewSendMessageResponseDto.builder()
                 .aiResponse(aiResponse)
                 .isCompleted(false)
-                .suggestFinish(suggestFinish)
+                .suggestFinish(eval.suggestFinish())
+                .qualityScore(eval.qualityScore())
+                .qualityHint(eval.qualityHint())
                 .build();
     }
 
@@ -199,7 +194,8 @@ public class InterviewServiceImpl implements InterviewService {
                         })
                         .doOnComplete(() -> {
                             try {
-                                interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, session.getLevel(), aiContent.toString());
+                                InterviewEvaluation eval = evaluateWithAi(session, history, aiContent.toString());
+                                interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, aiContent.toString(), eval);
                             } catch (Exception e) {
                                 log.error("AI 메시지 저장 실패, emitter 강제 종료", e);
                                 emitter.completeWithError(e);
@@ -436,6 +432,63 @@ public class InterviewServiceImpl implements InterviewService {
             sb.append(message.getContent()).append("\n\n");
         }
         return sb.toString();
+    }
+
+    InterviewEvaluation evaluateWithAi(InterviewSession session, List<ChatMessage> history, String aiResponse) {
+        String evalPrompt = buildEvalPrompt(session, history, aiResponse);
+        String evalJson = claudeAiClient.chat(evalPrompt, List.of(), "위 지시에 따라 JSON으로만 응답해주세요.");
+        return parseEvaluation(evalJson);
+    }
+
+    private String buildEvalPrompt(InterviewSession session, List<ChatMessage> history, String aiResponse) {
+        StringBuilder prompt = new StringBuilder();
+        String levelDesc = session.getLevel() == InterviewLevel.JUNIOR ? "신입 개발자" : "경력 개발자";
+
+        prompt.append("당신은 기술 면접 평가 전문가입니다.\n");
+        prompt.append("아래 면접 대화에서 지원자의 마지막 답변을 평가하고, 면접 종료 시점인지 판단해주세요.\n\n");
+        prompt.append("면접 레벨: ").append(levelDesc).append("\n");
+        if (session.getJobTitle() != null) {
+            prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n");
+        }
+        prompt.append("\n=== 면접 대화 ===\n");
+        for (ChatMessage msg : history) {
+            String role = "assistant".equals(msg.role()) ? "[면접관]" : "[지원자]";
+            prompt.append(role).append("\n").append(msg.content()).append("\n\n");
+        }
+        prompt.append("[면접관]\n").append(aiResponse).append("\n\n");
+        prompt.append("""
+                위 대화를 바탕으로 다음 JSON 형식으로만 응답하세요:
+                {
+                  "suggestFinish": false,
+                  "qualityScore": 75,
+                  "qualityHint": "시간복잡도 설명은 좋았으나 공간복잡도 언급이 부족했어요."
+                }
+
+                - suggestFinish: 주요 기술 주제가 충분히 다루어졌으면 true, 아직 부족하면 false
+                - qualityScore: 0-100 정수 (지원자 마지막 답변의 기술 정확성과 완성도)
+                - qualityHint: 한국어 한 줄 피드백 (지원자 마지막 답변에 대해, 100자 이내)
+                """);
+        return prompt.toString();
+    }
+
+    private InterviewEvaluation parseEvaluation(String evalJson) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String jsonStr = evalJson;
+            int jsonStart = jsonStr.indexOf('{');
+            int jsonEnd = jsonStr.lastIndexOf('}');
+            if (jsonStart >= 0 && jsonEnd >= 0) {
+                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
+                boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
+                int qualityScore = node.has("qualityScore") ? node.get("qualityScore").asInt(50) : 50;
+                String qualityHint = node.has("qualityHint") ? node.get("qualityHint").asText() : "답변이 접수되었습니다.";
+                return new InterviewEvaluation(suggestFinish, qualityScore, qualityHint);
+            }
+        } catch (Exception e) {
+            log.warn("평가 JSON 파싱 실패, fallback 사용: {}", e.getMessage());
+        }
+        return InterviewEvaluation.fallback();
     }
 
     void sendTokenToEmitter(SseEmitter emitter, String token) {
