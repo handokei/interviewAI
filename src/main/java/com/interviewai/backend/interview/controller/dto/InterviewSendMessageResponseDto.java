@@ -1,5 +1,6 @@
 package com.interviewai.backend.interview.controller.dto;
 
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -10,6 +11,6 @@ public class InterviewSendMessageResponseDto {
     private String aiResponse;
     private boolean isCompleted;
     private boolean suggestFinish;
-    private int qualityScore;
+    private AnswerLevel answerLevel;
     private String qualityHint;
 }
