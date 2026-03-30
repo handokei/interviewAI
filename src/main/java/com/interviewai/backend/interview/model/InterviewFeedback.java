@@ -1,5 +1,6 @@
 package com.interviewai.backend.interview.model;
 
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -20,7 +21,8 @@ public class InterviewFeedback {
     @JoinColumn(name = "session_id", nullable = false, unique = true)
     private InterviewSession session;
 
-    private Integer overallScore;
+    @Enumerated(EnumType.STRING)
+    private AnswerLevel overallLevel;
 
     @Column(columnDefinition = "TEXT")
     private String strengths;
@@ -36,10 +38,10 @@ public class InterviewFeedback {
     private LocalDateTime createdAt;
 
     @Builder
-    public InterviewFeedback(InterviewSession session, Integer overallScore,
+    public InterviewFeedback(InterviewSession session, AnswerLevel overallLevel,
                              String strengths, String improvements, String fullReport) {
         this.session = session;
-        this.overallScore = overallScore;
+        this.overallLevel = overallLevel;
         this.strengths = strengths;
         this.improvements = improvements;
         this.fullReport = fullReport;
