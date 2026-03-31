@@ -1,5 +1,6 @@
 package com.interviewai.backend.interview.controller.dto;
 
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.model.InterviewFeedback;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,7 +13,7 @@ public class InterviewFeedbackResponseDto {
 
     private Long id;
     private Long sessionId;
-    private Integer overallScore;
+    private AnswerLevel overallLevel;
     private String strengths;
     private String improvements;
     private String fullReport;
@@ -22,7 +23,7 @@ public class InterviewFeedbackResponseDto {
         return InterviewFeedbackResponseDto.builder()
                 .id(feedback.getId())
                 .sessionId(feedback.getSession().getId())
-                .overallScore(feedback.getOverallScore())
+                .overallLevel(feedback.getOverallLevel())
                 .strengths(feedback.getStrengths())
                 .improvements(feedback.getImprovements())
                 .fullReport(feedback.getFullReport())

@@ -44,8 +44,8 @@ public class InterviewMessageSaver {
 
         String qualityHintEscaped = eval.qualityHint().replace("\\", "\\\\").replace("\"", "\\\"");
         String doneData = "{\"suggestFinish\":" + eval.suggestFinish()
-                + ",\"qualityScore\":" + eval.qualityScore()
-                + ",\"qualityHint\":\"" + qualityHintEscaped + "\"}";
+                + ",\"answerLevel\":\"" + eval.answerLevel().name()
+                + "\",\"qualityHint\":\"" + qualityHintEscaped + "\"}";
 
         try {
             emitter.send(SseEmitter.event()
