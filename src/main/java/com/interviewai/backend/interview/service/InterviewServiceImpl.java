@@ -5,6 +5,7 @@ import com.interviewai.backend.client.GithubApiClient;
 import com.interviewai.backend.client.JobCrawlerClient;
 import com.interviewai.backend.client.dto.ChatMessage;
 import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;
@@ -55,6 +56,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final GithubApiClient githubApiClient;
     private final JobCrawlerClient jobCrawlerClient;
     private final InterviewMessageSaver interviewMessageSaver;
+    private final InterviewProperties interviewProperties;
 
     @Override
     @Transactional
@@ -183,7 +185,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .toList();
         String systemPrompt = buildSendMessageSystemPrompt(session, documents, session.getJobPostingContent());
 
-        SseEmitter emitter = new SseEmitter(120_000L);
+        SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             StringBuilder aiContent = new StringBuilder();
@@ -372,8 +374,8 @@ public class InterviewServiceImpl implements InterviewService {
             };
             prompt.append("\n=== 지원자 ").append(docLabel).append(" ===\n");
             String parsedText = doc.getParsedText();
-            if (parsedText.length() > 1500) {
-                parsedText = parsedText.substring(0, 1500) + "...";
+            if (parsedText.length() > interviewProperties.getPrompt().getMaxDocumentLength()) {
+                parsedText = parsedText.substring(0, interviewProperties.getPrompt().getMaxDocumentLength()) + "...";
             }
             prompt.append(parsedText).append("\n");
         }
@@ -386,8 +388,8 @@ public class InterviewServiceImpl implements InterviewService {
         if (jobPostingContent != null) {
             prompt.append("\n=== 채용공고 내용 ===\n");
             String content = jobPostingContent;
-            if (content.length() > 1500) {
-                content = content.substring(0, 1500) + "...";
+            if (content.length() > interviewProperties.getPrompt().getMaxJobPostingLength()) {
+                content = content.substring(0, interviewProperties.getPrompt().getMaxJobPostingLength()) + "...";
             }
             prompt.append(content).append("\n");
         }
