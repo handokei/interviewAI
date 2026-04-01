@@ -1,6 +1,7 @@
 package com.interviewai.backend.global.config.jwt;
 
 import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.user.enums.UserRole;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,7 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(
                                     userId,
                                     null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + UserRole.USER.name()))
                             );
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
