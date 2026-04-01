@@ -4,6 +4,7 @@ import com.interviewai.backend.client.ClaudeAiClient;
 import com.interviewai.backend.client.GithubApiClient;
 import com.interviewai.backend.client.JobCrawlerClient;
 import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.document.enums.DocumentType;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
@@ -92,6 +93,9 @@ class InterviewServiceImplTest {
     @Mock
     private InterviewMessageSaver interviewMessageSaver;
 
+    @Mock
+    private InterviewProperties interviewProperties;
+
     private User testUser;
 
     @BeforeEach
@@ -104,6 +108,11 @@ class InterviewServiceImplTest {
                 .profileImageUrl(null)
                 .role(UserRole.USER)
                 .build();
+
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        InterviewProperties.Sse sse = new InterviewProperties.Sse();
+        lenient().when(interviewProperties.getPrompt()).thenReturn(prompt);
+        lenient().when(interviewProperties.getSse()).thenReturn(sse);
     }
 
     @Test
