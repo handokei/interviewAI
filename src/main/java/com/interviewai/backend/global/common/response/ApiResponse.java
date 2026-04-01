@@ -1,6 +1,6 @@
-package com.interviewai.backend.common.response;
+package com.interviewai.backend.global.common.response;
 
-import com.interviewai.backend.common.exception.ErrorCode;
+import com.interviewai.backend.global.common.exception.ErrorCode;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

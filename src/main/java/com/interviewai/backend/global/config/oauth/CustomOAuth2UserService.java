@@ -1,4 +1,4 @@
-package com.interviewai.backend.config.oauth;
+package com.interviewai.backend.global.config.oauth;
 
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;

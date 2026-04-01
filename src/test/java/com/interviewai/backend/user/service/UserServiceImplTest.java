@@ -1,6 +1,6 @@
 package com.interviewai.backend.user.service;
 
-import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.global.common.exception.BusinessException;
 import com.interviewai.backend.user.controller.dto.UserProfileResponseDto;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserErrorCode;

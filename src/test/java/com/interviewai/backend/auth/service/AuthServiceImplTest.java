@@ -1,8 +1,8 @@
 package com.interviewai.backend.auth.service;
 
 import com.interviewai.backend.auth.service.dto.AuthTokenServiceDto;
-import com.interviewai.backend.common.exception.BusinessException;
-import com.interviewai.backend.config.jwt.JwtProvider;
+import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.global.config.jwt.JwtProvider;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;
 import com.interviewai.backend.user.model.User;

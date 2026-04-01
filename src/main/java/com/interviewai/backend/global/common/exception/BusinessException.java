@@ -1,4 +1,4 @@
-package com.interviewai.backend.common.exception;
+package com.interviewai.backend.global.common.exception;
 
 import lombok.Getter;
 

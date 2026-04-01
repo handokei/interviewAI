@@ -1,6 +1,6 @@
 package com.interviewai.backend.interview.enums;
 
-import com.interviewai.backend.common.exception.ErrorCode;
+import com.interviewai.backend.global.common.exception.ErrorCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

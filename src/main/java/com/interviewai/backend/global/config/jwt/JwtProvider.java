@@ -1,8 +1,8 @@
-package com.interviewai.backend.config.jwt;
+package com.interviewai.backend.global.config.jwt;
 
 import com.interviewai.backend.auth.enums.AuthErrorCode;
-import com.interviewai.backend.common.exception.BusinessException;
-import com.interviewai.backend.config.JwtProperties;
+import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.global.config.JwtProperties;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;

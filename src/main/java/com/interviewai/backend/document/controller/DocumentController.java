@@ -1,6 +1,6 @@
 package com.interviewai.backend.document.controller;
 
-import com.interviewai.backend.common.response.ApiResponse;
+import com.interviewai.backend.global.common.response.ApiResponse;
 import com.interviewai.backend.document.controller.dto.DocumentListResponseDto;
 import com.interviewai.backend.document.controller.dto.DocumentUploadResponseDto;
 import com.interviewai.backend.document.enums.DocumentType;

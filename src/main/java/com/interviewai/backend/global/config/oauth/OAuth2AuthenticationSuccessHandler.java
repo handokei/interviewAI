@@ -1,6 +1,6 @@
-package com.interviewai.backend.config.oauth;
+package com.interviewai.backend.global.config.oauth;
 
-import com.interviewai.backend.config.jwt.JwtProvider;
+import com.interviewai.backend.global.config.jwt.JwtProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;

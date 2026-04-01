@@ -4,7 +4,7 @@ import com.interviewai.backend.client.ClaudeAiClient;
 import com.interviewai.backend.client.GithubApiClient;
 import com.interviewai.backend.client.JobCrawlerClient;
 import com.interviewai.backend.client.dto.ChatMessage;
-import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.global.common.exception.BusinessException;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;

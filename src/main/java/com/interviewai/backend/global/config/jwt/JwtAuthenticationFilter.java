@@ -1,6 +1,6 @@
-package com.interviewai.backend.config.jwt;
+package com.interviewai.backend.global.config.jwt;
 
-import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.global.common.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

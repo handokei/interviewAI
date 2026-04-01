@@ -1,9 +1,9 @@
-package com.interviewai.backend.config;
+package com.interviewai.backend.global.config;
 
-import com.interviewai.backend.config.jwt.JwtAuthenticationFilter;
-import com.interviewai.backend.config.jwt.JwtProvider;
-import com.interviewai.backend.config.oauth.CustomOAuth2UserService;
-import com.interviewai.backend.config.oauth.OAuth2AuthenticationSuccessHandler;
+import com.interviewai.backend.global.config.jwt.JwtAuthenticationFilter;
+import com.interviewai.backend.global.config.jwt.JwtProvider;
+import com.interviewai.backend.global.config.oauth.CustomOAuth2UserService;
+import com.interviewai.backend.global.config.oauth.OAuth2AuthenticationSuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

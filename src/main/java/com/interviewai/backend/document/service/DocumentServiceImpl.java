@@ -1,7 +1,7 @@
 package com.interviewai.backend.document.service;
 
 import com.interviewai.backend.client.PdfParserClient;
-import com.interviewai.backend.common.exception.BusinessException;
+import com.interviewai.backend.global.common.exception.BusinessException;
 import com.interviewai.backend.document.controller.dto.DocumentListResponseDto;
 import com.interviewai.backend.document.controller.dto.DocumentUploadResponseDto;
 import com.interviewai.backend.document.enums.DocumentErrorCode;

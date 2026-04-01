@@ -1,4 +1,4 @@
-package com.interviewai.backend.config;
+package com.interviewai.backend.global.config;
 
 import lombok.Getter;
 import lombok.Setter;
