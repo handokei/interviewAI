@@ -64,6 +64,30 @@ jwt:
 app:
   frontend-url: http://localhost:5173
 
+interview:
+  prompt:
+    max-document-length: 1500
+    max-job-posting-length: 1500
+  sse:
+    timeout-ms: 120000
+
+github:
+  api:
+    base-url: https://api.github.com
+    max-repos: 10
+    max-readme-length: 500
+
+job-crawler:
+  timeout-ms: 10000
+  max-text-length: 3000
+  user-agent: "Mozilla/5.0 (compatible; InterviewAI/1.0)"
+
+cors:
+  allowed-origins:
+    - http://localhost:5173
+    - http://localhost:3000
+    - https://*.cloudfront.net
+
 springdoc:
   api-docs:
     path: /api-docs
