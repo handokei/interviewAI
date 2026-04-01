@@ -15,6 +15,10 @@ public class JobCrawlerClient {
     private final JobCrawlerProperties jobCrawlerProperties;
 
     public String crawl(String url) {
+        if (url == null || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+            log.warn("허용되지 않는 URL scheme: {}", url);
+            return null;
+        }
         try {
             Document document = Jsoup.connect(url)
                     .timeout(jobCrawlerProperties.getTimeoutMs())
