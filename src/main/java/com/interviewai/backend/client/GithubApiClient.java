@@ -23,6 +23,11 @@ public class GithubApiClient {
                 .build();
     }
 
+    GithubApiClient(GithubApiProperties githubApiProperties, RestClient restClient) {
+        this.githubApiProperties = githubApiProperties;
+        this.restClient = restClient;
+    }
+
     public String extractGithubInfo(String githubUrl) {
         String username = extractUsername(githubUrl);
         if (username == null) {
