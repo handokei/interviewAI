@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,8 +25,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DocumentServiceImpl implements DocumentService {
-
-    private static final String PDF_CONTENT_TYPE = "application/pdf";
 
     private final UserDocumentRepository userDocumentRepository;
     private final UserRepository userRepository;
@@ -84,7 +83,7 @@ public class DocumentServiceImpl implements DocumentService {
     private void validatePdfFile(MultipartFile file) {
         String contentType = file.getContentType();
         String originalFilename = file.getOriginalFilename();
-        boolean isPdf = PDF_CONTENT_TYPE.equals(contentType)
+        boolean isPdf = MediaType.APPLICATION_PDF_VALUE.equals(contentType)
                 || (originalFilename != null && originalFilename.toLowerCase().endsWith(".pdf"));
         if (!isPdf) {
             throw new BusinessException(DocumentErrorCode.UNSUPPORTED_FILE_TYPE);
