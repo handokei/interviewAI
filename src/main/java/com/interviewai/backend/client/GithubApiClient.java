@@ -2,6 +2,7 @@ package com.interviewai.backend.client;
 
 import com.interviewai.backend.global.config.GithubApiProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -15,6 +16,7 @@ public class GithubApiClient {
     private final RestClient restClient;
     private final GithubApiProperties githubApiProperties;
 
+    @Autowired
     public GithubApiClient(GithubApiProperties githubApiProperties) {
         this.githubApiProperties = githubApiProperties;
         this.restClient = RestClient.builder()
