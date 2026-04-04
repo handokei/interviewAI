@@ -87,6 +87,7 @@ sonar {
 		property "sonar.projectKey", "handokei_interviewAI"
 		property "sonar.organization", "handokei"
 		property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
+		property "sonar.coverage.exclusions", "**/config/oauth/CustomOAuth2UserService.java"
 	}
 }
 
@@ -99,14 +100,11 @@ jacocoTestReport {
 	afterEvaluate {
 		classDirectories.setFrom(files(classDirectories.files.collect {
 			fileTree(dir: it, exclude: [
-				'**/config/**',
 				'**/security/**',
 				'**/*Application*',
 				'**/dto/**',
 				'**/model/**',
 				'**/enums/**',
-				'**/exception/**',
-				'**/client/**',
 			])
 		}))
 	}
