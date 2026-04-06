@@ -5,6 +5,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,28 +31,12 @@ class JobCrawlerClientTest {
         jobCrawlerClient = new JobCrawlerClient(jobCrawlerProperties);
     }
 
-    @Test
-    @DisplayName("기능_테스트_null_URL이면_null을_반환한다")
-    void 기능_테스트_null_URL이면_null을_반환한다() {
-        String result = jobCrawlerClient.crawl(null);
-
-        assertThat(result).isNull();
-    }
-
-    @Test
-    @DisplayName("기능_테스트_ftp_scheme_URL이면_null을_반환한다")
-    void 기능_테스트_ftp_scheme_URL이면_null을_반환한다() {
-        String result = jobCrawlerClient.crawl("ftp://bad-scheme.com/job");
-
-        assertThat(result).isNull();
-    }
-
-    @Test
-    @DisplayName("기능_테스트_file_scheme_URL이면_null을_반환한다")
-    void 기능_테스트_file_scheme_URL이면_null을_반환한다() {
-        String result = jobCrawlerClient.crawl("file:///etc/passwd");
-
-        assertThat(result).isNull();
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"ftp://bad-scheme.com/job", "file:///etc/passwd", "javascript://xss"})
+    @DisplayName("기능_테스트_허용되지_않는_URL이면_null을_반환한다")
+    void 기능_테스트_허용되지_않는_URL이면_null을_반환한다(String url) {
+        assertThat(jobCrawlerClient.crawl(url)).isNull();
     }
 
     @Test
