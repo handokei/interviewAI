@@ -70,8 +70,9 @@ class OAuth2AuthenticationSuccessHandlerTest {
         ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
         verify(response).sendRedirect(urlCaptor.capture());
         String redirectUrl = urlCaptor.getValue();
-        assertThat(redirectUrl).contains("http://localhost:5173/auth/callback");
-        assertThat(redirectUrl).contains("accessToken=test-access-token");
-        assertThat(redirectUrl).contains("refreshToken=test-refresh-token");
+        assertThat(redirectUrl)
+                .contains("http://localhost:5173/auth/callback")
+                .contains("accessToken=test-access-token")
+                .contains("refreshToken=test-refresh-token");
     }
 }

@@ -204,7 +204,7 @@ public class InterviewServiceImpl implements InterviewService {
                                 emitter.completeWithError(e);
                             }
                         })
-                        .doOnError(e -> emitter.completeWithError(e))
+                        .doOnError(emitter::completeWithError)
                         .subscribe();
             } catch (Exception e) {
                 emitter.completeWithError(e);
