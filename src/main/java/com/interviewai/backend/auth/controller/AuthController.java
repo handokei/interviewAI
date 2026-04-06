@@ -3,7 +3,7 @@ package com.interviewai.backend.auth.controller;
 import com.interviewai.backend.auth.controller.dto.RefreshTokenRequestDto;
 import com.interviewai.backend.auth.controller.dto.TokenResponseDto;
 import com.interviewai.backend.auth.service.AuthService;
-import com.interviewai.backend.common.response.ApiResponse;
+import com.interviewai.backend.global.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

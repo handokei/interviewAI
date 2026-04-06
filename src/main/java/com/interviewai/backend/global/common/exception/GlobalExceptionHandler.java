@@ -1,6 +1,6 @@
-package com.interviewai.backend.common.exception;
+package com.interviewai.backend.global.common.exception;
 
-import com.interviewai.backend.common.response.ApiResponse;
+import com.interviewai.backend.global.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;

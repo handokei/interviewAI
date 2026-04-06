@@ -1,6 +1,8 @@
 package com.interviewai.backend.client;
 
+import com.interviewai.backend.global.config.GithubApiProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -11,14 +13,21 @@ import java.util.Map;
 @Component
 public class GithubApiClient {
 
-    private static final String GITHUB_API_BASE = "https://api.github.com";
     private final RestClient restClient;
+    private final GithubApiProperties githubApiProperties;
 
-    public GithubApiClient() {
+    @Autowired
+    public GithubApiClient(GithubApiProperties githubApiProperties) {
+        this.githubApiProperties = githubApiProperties;
         this.restClient = RestClient.builder()
-                .baseUrl(GITHUB_API_BASE)
+                .baseUrl(githubApiProperties.getBaseUrl())
                 .defaultHeader("Accept", "application/vnd.github.v3+json")
                 .build();
+    }
+
+    GithubApiClient(GithubApiProperties githubApiProperties, RestClient restClient) {
+        this.githubApiProperties = githubApiProperties;
+        this.restClient = restClient;
     }
 
     public String extractGithubInfo(String githubUrl) {
@@ -61,7 +70,8 @@ public class GithubApiClient {
     private void appendRepositories(StringBuilder result, String username) {
         try {
             List<?> repos = restClient.get()
-                    .uri("/users/{username}/repos?sort=updated&per_page=10", username)
+                    .uri("/users/{username}/repos?sort=updated&per_page={maxRepos}", username,
+                            githubApiProperties.getMaxRepos())
                     .retrieve()
                     .body(List.class);
 
@@ -97,8 +107,8 @@ public class GithubApiClient {
                 String content = new String(
                         java.util.Base64.getMimeDecoder().decode((String) readme.get("content"))
                 );
-                if (content.length() > 500) {
-                    content = content.substring(0, 500) + "...";
+                if (content.length() > githubApiProperties.getMaxReadmeLength()) {
+                    content = content.substring(0, githubApiProperties.getMaxReadmeLength()) + "...";
                 }
                 result.append("  README: ").append(content.replaceAll("\n", " ")).append("\n");
             }

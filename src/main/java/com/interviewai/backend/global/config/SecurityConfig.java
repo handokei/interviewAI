@@ -1,9 +1,9 @@
-package com.interviewai.backend.config;
+package com.interviewai.backend.global.config;
 
-import com.interviewai.backend.config.jwt.JwtAuthenticationFilter;
-import com.interviewai.backend.config.jwt.JwtProvider;
-import com.interviewai.backend.config.oauth.CustomOAuth2UserService;
-import com.interviewai.backend.config.oauth.OAuth2AuthenticationSuccessHandler;
+import com.interviewai.backend.global.config.jwt.JwtAuthenticationFilter;
+import com.interviewai.backend.global.config.jwt.JwtProvider;
+import com.interviewai.backend.global.config.oauth.CustomOAuth2UserService;
+import com.interviewai.backend.global.config.oauth.OAuth2AuthenticationSuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,6 +29,7 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final JwtProvider jwtProvider;
+    private final CorsProperties corsProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -56,8 +57,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:5173", "http://localhost:3000",
-                "https://*.cloudfront.net"));
+        configuration.setAllowedOriginPatterns(corsProperties.getAllowedOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

@@ -1,6 +1,6 @@
 package com.interviewai.backend.interview.controller;
 
-import com.interviewai.backend.common.response.ApiResponse;
+import com.interviewai.backend.global.common.response.ApiResponse;
 import com.interviewai.backend.interview.controller.dto.*;
 import com.interviewai.backend.interview.service.InterviewService;
 import io.swagger.v3.oas.annotations.Operation;

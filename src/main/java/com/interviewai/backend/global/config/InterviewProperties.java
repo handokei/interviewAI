@@ -1,0 +1,29 @@
+package com.interviewai.backend.global.config;
+
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "interview")
+public class InterviewProperties {
+
+    private Prompt prompt = new Prompt();
+    private Sse sse = new Sse();
+
+    @Getter
+    @Setter
+    public static class Prompt {
+        private int maxDocumentLength = 1500;
+        private int maxJobPostingLength = 1500;
+    }
+
+    @Getter
+    @Setter
+    public static class Sse {
+        private long timeoutMs = 120_000L;
+    }
+}
