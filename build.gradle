@@ -88,6 +88,15 @@ sonar {
 		property "sonar.organization", "handokei"
 		property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
 		property "sonar.coverage.exclusions", "**/config/oauth/CustomOAuth2UserService.java"
+
+		// Security Hotspot exclusions — 의도된 패턴, 아래 이유로 안전
+		property "sonar.issue.ignore.multicriteria", "e1,e2"
+		// e1: CSRF 비활성화 — SessionCreationPolicy.STATELESS + JWT 헤더 인증, 쿠키 기반 CSRF 공격 불가
+		property "sonar.issue.ignore.multicriteria.e1.ruleKey", "java:S4502"
+		property "sonar.issue.ignore.multicriteria.e1.resourceKey", "**/SecurityConfig.java"
+		// e2: SSRF — http/https scheme 검증 적용, 의도된 채용공고 크롤러
+		property "sonar.issue.ignore.multicriteria.e2.ruleKey", "java:S5144"
+		property "sonar.issue.ignore.multicriteria.e2.resourceKey", "**/JobCrawlerClient.java"
 	}
 }
 

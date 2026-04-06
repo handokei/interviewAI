@@ -20,7 +20,7 @@ public class JobCrawlerClient {
             return null;
         }
         try {
-            Document document = Jsoup.connect(url) // NOSONAR - URL scheme validated above (http/https only)
+            Document document = Jsoup.connect(url)
                     .timeout(jobCrawlerProperties.getTimeoutMs())
                     .userAgent(jobCrawlerProperties.getUserAgent())
                     .get();
