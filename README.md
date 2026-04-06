@@ -195,9 +195,51 @@ OAuth2 성공 핸들러에서 AccessToken + RefreshToken을 발급해 프론트�
 AI 프롬프트에 필요한 것은 원본 파일이 아닌 텍스트 내용뿐입니다.
 S3 없이 원본을 저장하지 않으므로 이력서 원본이 서버에 보관되지 않아 개인정보 부담이 줄어듭니다.
 
+**인식한 한계**
+`PDFTextStripper`는 **텍스트 레이어만 추출**합니다. 이력서에 포함된 이미지(사진, 차트, 스캔 기반 PDF)는 AI에 전달되지 않습니다.
+이 한계를 인식하면서도 현재 방식을 선택한 이유:
+- AI 면접 질문 생성에 필요한 핵심 정보(경력, 기술 스택, 프로젝트 설명)는 텍스트 레이어에 충분히 포함됨
+- OCR 도입 시 처리 속도 저하 + 오인식 노이즈로 프롬프트 품질 오히려 하락 우려
+- 향후 멀티모달 AI 전환 시 원본 저장 방식으로 개선 가능
+
 ---
 
-## #5 @ConfigurationProperties vs @Value
+## #5 AI 응답/평가 프롬프트 분리 설계
+
+면접 답변에 대해 AI 응답(면접관 역할)과 답변 평가(평가자 역할)를 단일 호출로 처리할 수도 있었지만 분리했습니다.
+
+| 항목 | 단일 응답 (응답 + 평가 혼합) | 응답/평가 분리 (2회 호출) |
+|------|--------------------------|----------------------|
+| AI 호출 횟수 | 1회 | 2회 |
+| 면접관 응답 품질 | 평가 지시가 섞여 자연스러운 대화 저해 | 면접관 역할에만 집중 |
+| 평가 JSON 안정성 | 대화 + JSON 혼합으로 파싱 복잡 | 평가 전용 프롬프트로 JSON만 반환 |
+
+**→ 선택: 분리**
+
+면접관 역할(자연스러운 대화 이어가기)과 평가자 역할(구조화된 JSON 데이터 반환)을 분리해
+각각의 품질을 독립적으로 보장했습니다.
+AI 호출이 1회 더 발생하지만, 면접 대화의 자연스러움과 평가 파싱 안정성이 훨씬 중요하다고 판단했습니다.
+
+---
+
+## #6 SSE 스트리밍과 ExecutorService 설계 — 동시성 고려
+
+SSE 스트리밍은 HTTP 스레드를 즉시 반환하고 다른 스레드에서 비동기로 데이터를 푸시해야 합니다.
+
+| 방식 | 설명 | 트레이드오프 |
+|------|------|------------|
+| 요청당 `newSingleThreadExecutor()` | 구현 단순 | 요청마다 스레드 생성/소멸 오버헤드 |
+| Bean으로 관리하는 고정 스레드풀 | 재사용, 동시 스트림 수 제한 | 설정 복잡도 증가 |
+| Reactor WebFlux 전환 | 논블로킹 완성 | 전체 스택 변경 필요 |
+
+**→ 현재: 요청당 SingleThreadExecutor** (기능 완성 우선)
+
+각 스트리밍 요청은 독립적인 단일 스레드에서 처리되므로 현재 구조에서 `StringBuilder` 데이터 경쟁은 발생하지 않습니다.
+다만 동시 사용자 증가 시 스레드 생성 오버헤드가 누적될 수 있어, Bean으로 관리하는 고정 스레드풀로의 전환을 개선 계획에 포함했습니다.
+
+---
+
+## #7 @ConfigurationProperties vs @Value
 
 | 항목 | @ConfigurationProperties | @Value |
 |------|--------------------------|--------|
@@ -215,7 +257,7 @@ S3 없이 원본을 저장하지 않으므로 이력서 원본이 서버에 보�
 
 # 📊 성능 비교
 
-## SSE 스트리밍 vs 동기 응답 — 사용자 체감 응답 시간
+## #1 SSE 스트리밍 vs 동기 응답 — 사용자 체감 응답 시간
 
 AI 응답을 전체 생성 후 한 번에 반환하는 방식(동기)과
 생성되는 즉시 클라이언트에 전달하는 방식(SSE 스트리밍)을 비교합니다.
@@ -233,58 +275,116 @@ AI 응답을 전체 생성 후 한 번에 반환하는 방식(동기)과
 
 ---
 
-# 🐞 트러블슈팅
+## #2 N+1 쿼리 개선 — 문서 첨부 조회
 
-## #1 다중 생성자로 인한 Spring 컨텍스트 로딩 실패
+면접 메시지 전송 시 첨부된 문서 목록을 프롬프트 컨텍스트로 구성하는 과정에서 N+1 쿼리가 발생했습니다.
 
-**문제**
-테스트용 `package-private` 생성자를 `GithubApiClient`에 추가한 후
-`@SpringBootTest`에서 `BeanCreationException: No default constructor found` 오류 발생.
-
-**원인**
-Spring은 생성자가 하나면 자동으로 주입 대상으로 사용합니다.
-생성자가 둘 이상이면 `@Autowired`가 없을 경우 no-arg 생성자를 찾고,
-없으면 예외를 발생시킵니다.
-
+**문제 코드**
 ```java
-// 문제 상황 — @Autowired 없이 생성자가 2개
-public GithubApiClient(GithubApiProperties props) { ... }
-GithubApiClient(GithubApiProperties props, RestClient restClient) { ... }  // 테스트용
+interviewSessionDocumentRepository.findBySessionId(sessionId)
+    .stream()
+    .map(InterviewSessionDocument::getDocument)  // ← 각 엔티티마다 SELECT 1회 추가
+    .toList();
 ```
 
-**해결**
-프로덕션 생성자에 `@Autowired` 명시.
+문서 3개 첨부 시 실행되는 SQL:
+```sql
+SELECT * FROM interview_session_documents WHERE session_id = ?   -- 1회
+SELECT * FROM user_documents WHERE id = ?                        -- 3회 (문서 수만큼)
+```
 
+**개선 — JOIN FETCH**
 ```java
-@Autowired
-public GithubApiClient(GithubApiProperties props) { ... }
+@Query("SELECT isd FROM InterviewSessionDocument isd JOIN FETCH isd.document WHERE isd.session.id = :sessionId")
+List<InterviewSessionDocument> findBySessionIdWithDocuments(@Param("sessionId") Long sessionId);
+```
+
+| 문서 첨부 수 | 개선 전 쿼리 수 | 개선 후 쿼리 수 |
+|-------------|--------------|--------------|
+| 1개 | 2회 | 1회 |
+| 3개 | 4회 | 1회 |
+| 5개 | 6회 | 1회 |
+
+---
+
+# 🐞 트러블슈팅
+
+## #1 LLM의 불안정한 JSON 응답으로 면접 평가 실패
+
+**문제 인식**
+면접 답변 평가 시 `answerLevel`이 항상 기본값(`NEEDS_IMPROVEMENT`)으로 표시되거나,
+간헐적으로 면접이 비정상 종료되는 현상 발생. 로그에 `평가 JSON 파싱 실패` 경고 확인.
+
+**원인 확인**
+AI에게 JSON 형식만 반환하도록 지시했지만, LLM은 아래처럼 앞뒤로 자연어 텍스트를 붙이기도 합니다.
+```
+물론이죠! 다음은 평가 결과입니다:
+{"suggestFinish": false, "answerLevel": "PASS", "qualityHint": "..."}
+```
+`ObjectMapper.readValue()`에 전체 문자열을 넣으면 `{` 앞의 텍스트 때문에 파싱 실패.
+
+**해결 방안**
+응답 문자열에서 첫 번째 `{`부터 마지막 `}`까지를 먼저 추출한 후 파싱.
+각 필드는 `has()` 체크 후 기본값 제공, enum 변환 실패도 별도 `catch`로 fallback 처리.
+```java
+int start = response.indexOf('{');
+int end   = response.lastIndexOf('}');
+if (start >= 0 && end >= 0) {
+    String json = response.substring(start, end + 1);
+    // 추출된 JSON만 파싱
+}
+// 전체 실패 시 InterviewEvaluation.fallback() 반환
 ```
 
 ---
 
-## #2 JaCoCo 제외 설정으로 SonarCloud 커버리지 0%
+## #2 면접 메시지 전송 시 N+1 쿼리 발생
 
-**문제**
-새 테스트를 추가했는데 SonarCloud에서 추가된 파일 전부 커버리지 0%로 표시.
-Quality Gate 실패.
+**문제 인식**
+`spring.jpa.show-sql: true` 로그를 분석하던 중, 문서 3개를 첨부한 세션에서
+메시지 1건 전송 시 `user_documents` 테이블 SELECT가 3번 연속 실행되는 것을 확인.
 
-**원인**
-JaCoCo `classDirectories` 제외 목록에 `**/config/**`, `**/exception/**`, `**/client/**`가 포함되어 있었고,
-새로 추가한 파일들이 전부 이 패키지 안에 있었습니다.
-SonarCloud가 JaCoCo XML을 읽을 때 해당 파일의 데이터가 없으니 0%로 판단.
-
-**해결**
-JaCoCo 제외 목록을 최소화(`**/security/**`, `**/*Application*`, `**/dto/**`, `**/model/**`, `**/enums/**`만 유지).
-의도적으로 테스트하지 않는 Security Hotspot 패턴은 `sonar.issue.ignore.multicriteria`로 중앙 처리.
-
-```groovy
-// build.gradle — sonar exclusion 중앙화
-property "sonar.issue.ignore.multicriteria", "e1,e2"
-property "sonar.issue.ignore.multicriteria.e1.ruleKey", "java:S4502"  // CSRF (stateless JWT)
-property "sonar.issue.ignore.multicriteria.e1.resourceKey", "**/SecurityConfig.java"
-property "sonar.issue.ignore.multicriteria.e2.ruleKey", "java:S5144"  // SSRF (의도된 크롤러)
-property "sonar.issue.ignore.multicriteria.e2.resourceKey", "**/JobCrawlerClient.java"
+**원인 확인**
+`findBySessionId()`로 `InterviewSessionDocument` 목록을 가져온 후,
+`.map(InterviewSessionDocument::getDocument)`에서 각 엔티티의 LAZY 필드에 접근.
+JPA가 엔티티마다 개별 SELECT를 발생시켜 문서 N개 → N+1 쿼리.
 ```
+SELECT * FROM interview_session_documents WHERE session_id = ?    -- 1회
+SELECT * FROM user_documents WHERE id = ?                         -- N회
+```
+
+**해결 방안**
+Repository에 `JOIN FETCH` 쿼리를 추가해 연관 엔티티를 단일 쿼리로 로딩.
+```java
+@Query("SELECT isd FROM InterviewSessionDocument isd JOIN FETCH isd.document WHERE isd.session.id = :sessionId")
+List<InterviewSessionDocument> findBySessionIdWithDocuments(@Param("sessionId") Long sessionId);
+```
+문서 수와 무관하게 항상 1회 쿼리로 해결.
+
+---
+
+## #3 SSE 연결 타임아웃으로 AI 스트리밍 중단
+
+**문제 인식**
+짧은 답변은 정상이지만 길고 복잡한 질문에 대한 AI 응답 중 연결이 끊기는 현상.
+프론트엔드에서 SSE 스트림이 완료되지 않은 채 오류 이벤트 수신.
+
+**원인 확인**
+`new SseEmitter()`의 기본 타임아웃은 30초입니다.
+Gemini API는 프롬프트 복잡도(이력서+채용공고+대화 이력)에 따라 응답 생성에 30초 이상 걸릴 수 있어,
+생성 완료 전에 연결이 강제 종료됨.
+
+**해결 방안**
+타임아웃을 하드코딩하지 않고 `@ConfigurationProperties`로 외부 설정으로 분리.
+```yaml
+interview:
+  sse:
+    timeout-ms: 120000  # 2분
+```
+```java
+SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
+```
+운영 환경에서 별도 조정 가능하며, AI 응답 특성에 맞게 2분으로 설정.
 
 ---
 
@@ -334,7 +434,7 @@ property "sonar.issue.ignore.multicriteria.e2.resourceKey", "**/JobCrawlerClient
 # 🔧 앞으로의 개선 계획
 
 - **배포** — AWS EC2 또는 Railway를 통한 실서비스 환경 구축
-- **음성 면접** — STT(Speech-to-Text) 연동으로 음성 답변 지원
+- **스레드풀 Bean 관리** — SSE 스트리밍 시 요청마다 생성하는 ExecutorService를 Bean으로 관리하는 고정 스레드풀로 전환
 - **맞춤형 피드백** — 면접 히스토리 기반 반복 취약 영역 개선 추적
 - **WebClient 전환** — AI 및 외부 API 호출의 비동기 처리 개선
 - **Redis 캐시** — 자주 조회되는 면접 통계 캐싱으로 DB 부하 감소
