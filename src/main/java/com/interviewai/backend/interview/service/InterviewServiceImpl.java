@@ -123,6 +123,10 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
+        if (interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)) {
+            throw new BusinessException(InterviewErrorCode.FIRST_QUESTION_ALREADY_SENT);
+        }
+
         String systemPrompt = session.getSystemPrompt();
 
         SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
