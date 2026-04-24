@@ -6,8 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -77,17 +80,32 @@ public class GithubApiClient {
 
             if (repos != null && !repos.isEmpty()) {
                 result.append("주요 레포지토리:\n");
+
+                Map<String, CompletableFuture<String>> readmeFutures = new LinkedHashMap<>();
                 for (Object repoObj : repos) {
                     if (repoObj instanceof Map<?, ?> repo) {
-                        result.append("- ").append(repo.get("name"));
+                        String repoName = (String) repo.get("name");
+                        result.append("- ").append(repoName);
                         if (repo.get("description") != null) {
                             result.append(": ").append(repo.get("description"));
                         }
                         result.append(" (⭐").append(repo.get("stargazers_count")).append(")\n");
-                        if (Boolean.TRUE.equals(repo.get("fork"))) {
-                            continue;
+                        if (!Boolean.TRUE.equals(repo.get("fork"))) {
+                            readmeFutures.put(repoName, CompletableFuture.supplyAsync(
+                                    () -> fetchReadme(username, repoName)
+                            ));
                         }
-                        appendReadme(result, username, (String) repo.get("name"));
+                    }
+                }
+
+                CompletableFuture.allOf(readmeFutures.values().toArray(new CompletableFuture[0]))
+                        .orTimeout(30, TimeUnit.SECONDS)
+                        .join();
+
+                for (Map.Entry<String, CompletableFuture<String>> entry : readmeFutures.entrySet()) {
+                    String readme = entry.getValue().join();
+                    if (readme != null) {
+                        result.append("  README: ").append(readme).append("\n");
                     }
                 }
             }
@@ -96,7 +114,7 @@ public class GithubApiClient {
         }
     }
 
-    private void appendReadme(StringBuilder result, String username, String repoName) {
+    String fetchReadme(String username, String repoName) {
         try {
             Map<?, ?> readme = restClient.get()
                     .uri("/repos/{username}/{repo}/readme", username, repoName)
@@ -110,11 +128,12 @@ public class GithubApiClient {
                 if (content.length() > githubApiProperties.getMaxReadmeLength()) {
                     content = content.substring(0, githubApiProperties.getMaxReadmeLength()) + "...";
                 }
-                result.append("  README: ").append(content.replaceAll("\n", " ")).append("\n");
+                return content.replaceAll("\n", " ");
             }
         } catch (Exception e) {
             // README 없는 경우 무시
         }
+        return null;
     }
 
     private String extractUsername(String githubUrl) {
