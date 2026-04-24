@@ -38,6 +38,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+	// Monitoring
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 
 	// Spring AI - Anthropic (Claude) [주석 처리 - Gemini 전환]
 //	implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
