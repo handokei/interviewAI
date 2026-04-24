@@ -1481,6 +1481,7 @@ class InterviewServiceImplTest {
         // status is IN_PROGRESS by default after build
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
         lenient().when(claudeAiClient.streamChat(any(), any(), any())).thenReturn(Flux.just("첫", "질문"));
 
         // when
@@ -1551,6 +1552,29 @@ class InterviewServiceImplTest {
     }
 
     @Test
+    @DisplayName("예외_테스트_streamFirstQuestion_AI_메시지가_이미_존재하면_예외가_발생한다")
+    void 예외_테스트_streamFirstQuestion_AI_메시지가_이미_존재하면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI))
+                .willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamFirstQuestion(userId, sessionId))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     @DisplayName("기능_테스트_streamFirstQuestion_doOnComplete_완료_시_saveFirstQuestionMessage가_호출된다")
     void 기능_테스트_streamFirstQuestion_doOnComplete_완료_시_saveFirstQuestionMessage가_호출된다() throws InterruptedException {
         // given
@@ -1570,6 +1594,7 @@ class InterviewServiceImplTest {
         }).when(interviewMessageSaver).saveFirstQuestionMessage(any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("첫", "질문"));
 
         // when
@@ -1600,6 +1625,7 @@ class InterviewServiceImplTest {
         }).when(interviewMessageSaver).saveFirstQuestionMessage(any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
 
         // when
@@ -1626,6 +1652,7 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
         given(claudeAiClient.streamChat(any(), any(), any()))
                 .willReturn(Flux.error(new RuntimeException("스트림 오류")));
 
@@ -1651,6 +1678,7 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
         given(claudeAiClient.streamChat(any(), any(), any()))
                 .willThrow(new RuntimeException("API 호출 실패"));
 
