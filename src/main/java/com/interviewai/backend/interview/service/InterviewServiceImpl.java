@@ -108,16 +108,50 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         String systemPrompt = buildSystemPrompt(session, documents, jobPostingContent, githubInfo);
-        String firstQuestion = claudeAiClient.chat(systemPrompt, List.of(),
-                "면접을 시작해주세요. 첫 번째 질문을 해주세요.");
+        session.setSystemPrompt(systemPrompt);
+        interviewSessionRepository.save(session);
 
-        interviewMessageRepository.save(InterviewMessage.builder()
-                .session(session)
-                .role(MessageRole.AI)
-                .content(firstQuestion)
-                .build());
+        return InterviewStartResponseDto.of(session, null);
+    }
 
-        return InterviewStartResponseDto.of(session, firstQuestion);
+    @Override
+    public SseEmitter streamFirstQuestion(Long userId, Long sessionId) {
+        InterviewSession session = interviewSessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException(InterviewErrorCode.SESSION_NOT_FOUND));
+
+        if (session.getStatus() != InterviewStatus.IN_PROGRESS) {
+            throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
+        }
+
+        String systemPrompt = session.getSystemPrompt();
+
+        SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.execute(() -> {
+            StringBuilder aiContent = new StringBuilder();
+            try {
+                claudeAiClient.streamChat(systemPrompt, List.of(),
+                                "면접을 시작해주세요. 첫 번째 질문을 해주세요.")
+                        .doOnNext(token -> {
+                            aiContent.append(token);
+                            sendTokenToEmitter(emitter, token);
+                        })
+                        .doOnComplete(() -> {
+                            try {
+                                interviewMessageSaver.saveFirstQuestionMessage(emitter, sessionId, aiContent.toString());
+                            } catch (Exception e) {
+                                log.error("첫 질문 메시지 저장 실패", e);
+                                emitter.completeWithError(e);
+                            }
+                        })
+                        .doOnError(emitter::completeWithError)
+                        .subscribe();
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+        executor.shutdown();
+        return emitter;
     }
 
     @Override

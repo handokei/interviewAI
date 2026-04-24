@@ -33,6 +33,23 @@ public class InterviewMessageSaver {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void saveFirstQuestionMessage(SseEmitter emitter, Long sessionId, String aiContent) {
+        InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
+        interviewMessageRepository.save(InterviewMessage.builder()
+                .session(sessionRef)
+                .role(MessageRole.AI)
+                .content(aiContent)
+                .build());
+
+        try {
+            emitter.send(SseEmitter.event().name("done").data("{}"));
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
                                          String aiContent, InterviewEvaluation eval) {
         InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);

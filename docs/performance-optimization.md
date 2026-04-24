@@ -207,20 +207,81 @@ private String joinSafely(CompletableFuture<String> future, long timeoutSeconds)
 
 ![After wt-2](./screenshots/grafana-after-wt2.png)
 
-### 3단계: 첫 질문 스트리밍 전환
+### 3단계: 첫 질문 스트리밍 전환 (#53) ✅
 
-- **대상**: `claudeAiClient.chat()` 동기 블로킹
-- **방법**: 세션 생성 즉시 반환 → 첫 질문은 SSE 스트리밍
-- **예상 효과**: 체감 대기 ~2초 (세션 생성만)
+- **이슈**: 백엔드 [#53](https://github.com/handokei/interviewAI/issues/53) / 프론트 [#42](https://github.com/handokei/interviewAI-frontend/issues/42)
+- **PR**: 백엔드 [#54](https://github.com/handokei/interviewAI/pull/54) / 프론트 [#43](https://github.com/handokei/interviewAI-frontend/pull/43)
+- **대상**: `InterviewServiceImpl.startInterview()` 내 `claudeAiClient.chat()` 동기 블로킹
 
-### 예상 총 효과
+#### 변경 전 (동기 블로킹)
 
-| 단계 | 전체 소요 시간 (worst) |
-|------|----------------------|
-| Baseline (현재) | ~27초 |
-| 1단계 후 | ~22초 (-5초) |
-| 2단계 후 | ~12초 (-10초) |
-| 3단계 후 | 체감 ~2초 |
+```java
+// startInterview() 내부 — AI 응답 전체를 기다림 (~5.5초 블로킹)
+String firstQuestion = claudeAiClient.chat(systemPrompt, List.of(),
+        "면접을 시작해주세요. 첫 번째 질문을 해주세요.");
+return InterviewStartResponseDto.of(session, firstQuestion);
+```
+
+- 프론트는 ~7초 후 세션 + 첫 질문을 **한꺼번에** 수신
+
+#### 변경 후 (스트리밍 분리)
+
+```java
+// 1. startInterview() — 세션 생성만, 즉시 반환 (~2초)
+session.setSystemPrompt(systemPrompt);
+interviewSessionRepository.save(session);
+return InterviewStartResponseDto.of(session, null);  // firstQuestion=null
+
+// 2. streamFirstQuestion() — 별도 SSE 엔드포인트
+// POST /{sessionId}/first-question/stream
+claudeAiClient.streamChat(systemPrompt, List.of(), "면접을 시작해주세요...")
+    .doOnNext(token -> sendTokenToEmitter(emitter, token))
+    .doOnComplete(() -> interviewMessageSaver.saveFirstQuestionMessage(...))
+    .subscribe();
+```
+
+- 프론트: 세션 생성 즉시 → 첫 질문 **한 글자씩 스트리밍** 수신
+
+#### 프론트엔드 연동
+
+```typescript
+// InterviewSessionPage.tsx — mount 시 메시지 없으면 자동 스트리밍
+useEffect(() => {
+  getMessages(id).then((msgs) => {
+    setMessages(msgs)
+    if (msgs.length === 0) {
+      streamFirstQuestion(id, onToken, onDone)
+    }
+  })
+}, [id])
+```
+
+#### 기술적 의사결정
+
+| 결정 | 이유 |
+|------|------|
+| `startInterview`에서 chat() 제거 | 동기 블로킹 5.5초가 전체 응답의 75% — 제거하면 즉시 반환 가능 |
+| `systemPrompt`를 세션에 저장 | streamFirstQuestion에서 프롬프트 재빌드 불필요 (documents, githubInfo 등은 이미 합쳐진 상태) |
+| 별도 SSE 엔드포인트 분리 | 기존 `streamMessage`와 동일한 패턴 재사용, `startInterview` API 호환성 유지 |
+| 프론트 `msgs.length === 0` 체크 | 새 세션 vs 기존 세션 재진입 구분 — 재진입 시 스트리밍 안 함 |
+| `saveFirstQuestionMessage` 분리 | 기존 `saveAiMessageAndComplete`는 evaluation 데이터 포함 — 첫 질문은 evaluation 없음 |
+
+#### 측정 결과
+
+| 지표 | Before (wt-2) | After (wt-3) |
+|------|--------------|-------------|
+| `startInterview` 응답 시간 | **~7.4초** (crawl+github+chat 전부 대기) | **~2초** (crawl+github만, chat 제거) |
+| 첫 질문 표시 방식 | 7.4초 후 한꺼번에 | 2초 후 **즉시 스트리밍 시작** |
+| 체감 대기 시간 | 7.4초 화면 멈춤 | **~2초** (세션 생성) + 스트리밍 |
+
+### 최종 성과 요약
+
+| 단계 | 전체 소요 시간 | 체감 |
+|------|--------------|------|
+| Baseline | ~15초 (화면 멈춤) | 느림 |
+| 1단계 (README 병렬) | ~12초 | 조금 개선 |
+| 2단계 (외부 호출 병렬) | ~7.4초 | 절반 단축 |
+| **3단계 (첫 질문 스트리밍)** | **~2초 + 스트리밍** | **즉각 반응** |
 
 ---
 
@@ -233,4 +294,4 @@ private String joinSafely(CompletableFuture<String> future, long timeoutSeconds)
 | Baseline | ![baseline](./screenshots/grafana-baseline.png) | extractGithubInfo **4.89s**, chat **5.51s** |
 | 1단계 후 | ![after-wt1](./screenshots/grafana-after-wt1.png) | extractGithubInfo **1.57s** (-68%) |
 | 2단계 후 | ![after-wt2](./screenshots/grafana-after-wt2.png) | crawl **474ms** + github **1.83s** 동시 실행, 총 **~7.4초** (-50%) |
-| 3단계 후 | | 예정 |
+| 3단계 후 | | startInterview **~2초** + 첫 질문 **즉시 스트리밍** |

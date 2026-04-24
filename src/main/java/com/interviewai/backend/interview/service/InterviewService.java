@@ -15,6 +15,8 @@ public interface InterviewService {
 
     SseEmitter streamMessage(Long userId, Long sessionId, InterviewSendMessageRequestDto request);
 
+    SseEmitter streamFirstQuestion(Long userId, Long sessionId);
+
     InterviewFeedbackResponseDto finishInterview(Long userId, Long sessionId);
 
     Page<InterviewSessionResponseDto> findMySessions(Long userId, Pageable pageable);

@@ -46,6 +46,10 @@ public class InterviewSession {
     @Column(columnDefinition = "TEXT")
     private String jobPostingContent;
 
+    @Setter
+    @Column(columnDefinition = "TEXT")
+    private String systemPrompt;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
