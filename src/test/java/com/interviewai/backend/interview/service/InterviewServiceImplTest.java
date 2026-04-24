@@ -1340,6 +1340,146 @@ class InterviewServiceImplTest {
         assertThat(response.getQualityHint()).isEqualTo("힌트");
     }
 
+    @Test
+    @DisplayName("기능_테스트_startInterview_crawl과_github_모두_제공되면_두_Future가_모두_실행된다")
+    void 기능_테스트_startInterview_crawl과_github_모두_제공되면_두_Future가_모두_실행된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "githubUrl", "https://github.com/testuser");
+        setField(request, "jobPostingUrl", "https://jobs.example.com/backend");
+
+        String crawledContent = "채용공고 내용입니다.";
+        String githubContent = "GitHub 정보입니다.";
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.COMPANY)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(jobCrawlerClient.crawl("https://jobs.example.com/backend")).willReturn(crawledContent);
+        given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(jobCrawlerClient).crawl("https://jobs.example.com/backend");
+        verify(githubApiClient).extractGithubInfo("https://github.com/testuser");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_githubUrl만_제공되면_githubFuture만_실행된다")
+    void 기능_테스트_startInterview_githubUrl만_제공되면_githubFuture만_실행된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "githubUrl", "https://github.com/testuser");
+
+        String githubContent = "GitHub 정보입니다.";
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(githubApiClient).extractGithubInfo("https://github.com/testuser");
+        verify(jobCrawlerClient, org.mockito.Mockito.never()).crawl(any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_jobPostingUrl만_제공되면_crawlFuture만_실행된다")
+    void 기능_테스트_startInterview_jobPostingUrl만_제공되면_crawlFuture만_실행된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+        setField(request, "jobPostingUrl", "https://jobs.example.com/backend");
+
+        String crawledContent = "채용공고 내용입니다.";
+
+        UserDocument resume = mock(UserDocument.class);
+        when(resume.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(resume.getParsedText()).thenReturn("이력서 내용입니다.");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.COMPANY)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(resume));
+        given(jobCrawlerClient.crawl("https://jobs.example.com/backend")).willReturn(crawledContent);
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(jobCrawlerClient).crawl("https://jobs.example.com/backend");
+        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_jobPostingUrl과_githubUrl_모두_없으면_두_Future_모두_실행되지_않는다")
+    void 기능_테스트_startInterview_jobPostingUrl과_githubUrl_모두_없으면_두_Future_모두_실행되지_않는다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.SENIOR);
+        setField(request, "jobTitle", "백엔드 개발자");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.SENIOR)
+                .jobTitle("백엔드 개발자")
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(jobCrawlerClient, org.mockito.Mockito.never()).crawl(any());
+        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any());
+    }
+
     private void setField(Object target, String fieldName, Object value) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
