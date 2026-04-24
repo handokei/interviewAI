@@ -125,11 +125,87 @@ for (Map.Entry<String, CompletableFuture<String>> entry : readmeFutures.entrySet
 ![Before](./screenshots/grafana-baseline.png)
 ![After wt-1](./screenshots/grafana-after-wt1.png)
 
-### 2단계: 외부 호출 병렬화
+### 2단계: 외부 호출 병렬화 (#51) ✅
 
-- **대상**: `InterviewServiceImpl.startInterview()` 내 crawl + github 순차 호출
-- **방법**: `CompletableFuture`로 동시 실행
-- **예상 효과**: 순차 13초 → 병렬 10초 (가장 느린 호출 기준)
+- **이슈**: [#51](https://github.com/handokei/interviewAI/issues/51) / **PR**: [#52](https://github.com/handokei/interviewAI/pull/52)
+- **대상**: `InterviewServiceImpl.startInterview()` 내 Job Crawl + GitHub API 순차 호출
+
+#### 변경 전 (순차)
+
+```java
+// 1. crawl 완료까지 대기 (최대 10초)
+String jobPostingContent = null;
+if (request.getMode() == InterviewMode.COMPANY && request.getJobPostingUrl() != null) {
+    jobPostingContent = jobCrawlerClient.crawl(request.getJobPostingUrl());
+}
+
+// 2. crawl 끝난 후 github 시작 (3~7초)
+String githubInfo = null;
+if (request.getGithubUrl() != null) {
+    githubInfo = githubApiClient.extractGithubInfo(request.getGithubUrl());
+}
+```
+
+- crawl(최대 10초) **완료 후** github(1.5~7초) 시작 → 순차 합산 **~12~17초**
+
+#### 변경 후 (병렬)
+
+```java
+// 1. 두 호출을 동시에 시작
+CompletableFuture<String> crawlFuture = null;
+if (request.getMode() == InterviewMode.COMPANY && request.getJobPostingUrl() != null) {
+    crawlFuture = CompletableFuture.supplyAsync(
+            () -> jobCrawlerClient.crawl(request.getJobPostingUrl()));
+}
+
+CompletableFuture<String> githubFuture = null;
+if (request.getGithubUrl() != null) {
+    githubFuture = CompletableFuture.supplyAsync(
+            () -> githubApiClient.extractGithubInfo(request.getGithubUrl()));
+}
+
+// 2. 각각 타임아웃 + graceful degradation
+String jobPostingContent = joinSafely(crawlFuture, 15);
+String githubInfo = joinSafely(githubFuture, 30);
+```
+
+```java
+// joinSafely — 실패 시 null 반환, 인터뷰 생성은 계속 진행
+private String joinSafely(CompletableFuture<String> future, long timeoutSeconds) {
+    if (future == null) return null;
+    try {
+        return future.orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+    } catch (Exception e) {
+        log.warn("외부 호출 실패 (graceful degradation): {}", e.getMessage());
+        return null;
+    }
+}
+```
+
+- crawl + github **동시 실행** → 가장 느린 호출 기준으로만 대기
+
+#### 기술적 의사결정
+
+| 결정 | 이유 |
+|------|------|
+| `CompletableFuture.supplyAsync()` | crawl과 github는 완전 독립적 — 동시 실행 가능 |
+| `joinSafely()` + null 반환 | 외부 호출 실패가 인터뷰 생성을 막으면 안 됨. GitHub/채용공고 정보는 보조 컨텍스트이므로 없어도 AI가 질문 생성 가능 |
+| `orTimeout(crawl 15초, github 30초)` | crawl은 Jsoup 자체 타임아웃 10초 + 여유, github는 내부 병렬 README fetch 포함 |
+| `CompletionException` catch | `.join()`은 예외를 `CompletionException`으로 래핑 — 이를 잡지 않으면 500 에러 노출 |
+| `@Transactional` 범위 유지 | 외부 호출은 DB 트랜잭션과 무관 (읽기 전용 데이터 수집), future는 `.join()` 후 결과만 사용 |
+
+#### 측정 결과
+
+| Client.Method | Baseline | After wt-1 | After wt-2 | 개선 |
+|---------------|----------|------------|------------|------|
+| GithubApiClient.extractGithubInfo | 4.89s | 1.57s | **1.83s** | -63% |
+| JobCrawlerClient.crawl | 미측정 | 미측정 | **474ms** | 첫 측정 |
+| ClaudeAiClient.chat | 5.51s | 3.05s | **5.59s** | AI 응답 변동 |
+
+**핵심 개선**: crawl(474ms) + github(1.83s)가 **동시 실행**되므로 순차 대비 **~474ms 절약** (crawl이 github보다 빨리 끝남).
+전체 옵션 사용 시 총 대기: github(1.83s) + chat(5.59s) = **~7.4초** (baseline ~15초 대비 -50%)
+
+![After wt-2](./screenshots/grafana-after-wt2.png)
 
 ### 3단계: 첫 질문 스트리밍 전환
 
@@ -156,5 +232,5 @@ for (Map.Entry<String, CompletableFuture<String>> entry : readmeFutures.entrySet
 |------|---------|------|
 | Baseline | ![baseline](./screenshots/grafana-baseline.png) | extractGithubInfo **4.89s**, chat **5.51s** |
 | 1단계 후 | ![after-wt1](./screenshots/grafana-after-wt1.png) | extractGithubInfo **1.57s** (-68%) |
-| 2단계 후 | | 예정 |
+| 2단계 후 | ![after-wt2](./screenshots/grafana-after-wt2.png) | crawl **474ms** + github **1.83s** 동시 실행, 총 **~7.4초** (-50%) |
 | 3단계 후 | | 예정 |
