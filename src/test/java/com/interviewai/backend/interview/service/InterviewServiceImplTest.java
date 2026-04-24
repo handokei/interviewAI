@@ -134,8 +134,6 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("안녕하세요! 면접을 시작하겠습니다. 자기소개를 해주세요.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -144,8 +142,8 @@ class InterviewServiceImplTest {
         assertThat(response).isNotNull();
         assertThat(response.getMode()).isEqualTo(InterviewMode.BASIC);
         assertThat(response.getLevel()).isEqualTo(InterviewLevel.JUNIOR);
-        assertThat(response.getFirstQuestion()).isNotBlank();
-        verify(interviewSessionRepository).save(any(InterviewSession.class));
+        assertThat(response.getFirstQuestion()).isNull();
+        verify(interviewSessionRepository, times(2)).save(any(InterviewSession.class));
     }
 
     @Test
@@ -177,8 +175,6 @@ class InterviewServiceImplTest {
                 .willReturn(List.of(resume, portfolio));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
         given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -186,6 +182,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response).isNotNull();
         assertThat(response.getMode()).isEqualTo(InterviewMode.RESUME);
+        assertThat(response.getFirstQuestion()).isNull();
         verify(interviewSessionDocumentRepository, times(2)).save(any(InterviewSessionDocument.class));
     }
 
@@ -941,16 +938,17 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         interviewService.startInterview(userId, request);
 
         // then
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
-        String prompt = promptCaptor.getValue();
+        // systemPrompt is set on the session object returned by the first save() call.
+        // The second save() persists the session with the generated systemPrompt.
+        // We verify by capturing the session passed to the second save().
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
         assertThat(prompt).contains("지원자의 이름이 제공된 문서");
         assertThat(prompt).doesNotContain("지원자 이름:");
     }
@@ -969,16 +967,15 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         interviewService.startInterview(userId, request);
 
         // then
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
-        assertThat(promptCaptor.getValue()).contains("신입 개발자");
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).contains("신입 개발자");
     }
 
     @Test
@@ -995,16 +992,15 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         interviewService.startInterview(userId, request);
 
         // then
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
-        assertThat(promptCaptor.getValue()).contains("경력 개발자");
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).contains("경력 개발자");
     }
 
     @Test
@@ -1028,16 +1024,14 @@ class InterviewServiceImplTest {
         given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(resume));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
         given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         interviewService.startInterview(userId, request);
 
         // then
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(claudeAiClient).chat(promptCaptor.capture(), any(), any());
-        String prompt = promptCaptor.getValue();
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
         assertThat(prompt).contains("=== 지원자 이력서 ===");
         assertThat(prompt).contains("이력서 내용입니다.");
     }
@@ -1364,8 +1358,6 @@ class InterviewServiceImplTest {
         given(jobCrawlerClient.crawl("https://jobs.example.com/backend")).willReturn(crawledContent);
         given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -1397,8 +1389,6 @@ class InterviewServiceImplTest {
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -1437,8 +1427,6 @@ class InterviewServiceImplTest {
         given(jobCrawlerClient.crawl("https://jobs.example.com/backend")).willReturn(crawledContent);
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
         given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -1468,8 +1456,6 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
-        given(claudeAiClient.chat(any(), any(), any())).willReturn("면접을 시작하겠습니다.");
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
 
         // when
         InterviewStartResponseDto response = interviewService.startInterview(userId, request);
@@ -1478,6 +1464,202 @@ class InterviewServiceImplTest {
         assertThat(response).isNotNull();
         verify(jobCrawlerClient, org.mockito.Mockito.never()).crawl(any());
         verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_IN_PROGRESS_세션에서_SseEmitter를_반환한다")
+    void 기능_테스트_streamFirstQuestion_IN_PROGRESS_세션에서_SseEmitter를_반환한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        // status is IN_PROGRESS by default after build
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        lenient().when(claudeAiClient.streamChat(any(), any(), any())).thenReturn(Flux.just("첫", "질문"));
+
+        // when
+        SseEmitter emitter = interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamFirstQuestion_세션이_존재하지_않으면_예외가_발생한다")
+    void 예외_테스트_streamFirstQuestion_세션이_존재하지_않으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamFirstQuestion(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamFirstQuestion_이미_완료된_세션이면_예외가_발생한다")
+    void 예외_테스트_streamFirstQuestion_이미_완료된_세션이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession completedSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        completedSession.complete();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(completedSession));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamFirstQuestion(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("완료");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamFirstQuestion_취소된_세션이면_예외가_발생한다")
+    void 예외_테스트_streamFirstQuestion_취소된_세션이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession cancelledSession = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        cancelledSession.cancel();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(cancelledSession));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.streamFirstQuestion(userId, sessionId))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_doOnComplete_완료_시_saveFirstQuestionMessage가_호출된다")
+    void 기능_테스트_streamFirstQuestion_doOnComplete_완료_시_saveFirstQuestionMessage가_호출된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            return null;
+        }).when(interviewMessageSaver).saveFirstQuestionMessage(any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("첫", "질문"));
+
+        // when
+        interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        verify(interviewMessageSaver).saveFirstQuestionMessage(any(), eq(sessionId), eq("첫질문"));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_doOnComplete_저장_실패_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamFirstQuestion_doOnComplete_저장_실패_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        CountDownLatch latch = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            latch.countDown();
+            throw new RuntimeException("DB 저장 실패");
+        }).when(interviewMessageSaver).saveFirstQuestionMessage(any(), any(), any());
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
+
+        // when
+        SseEmitter emitter = interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(100);
+        assertThat(emitter).isNotNull();
+        verify(interviewMessageSaver).saveFirstQuestionMessage(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_Flux_오류_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamFirstQuestion_Flux_오류_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willReturn(Flux.error(new RuntimeException("스트림 오류")));
+
+        // when
+        SseEmitter emitter = interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_streamChat_예외_발생_시_emitter가_오류로_종료된다")
+    void 기능_테스트_streamFirstQuestion_streamChat_예외_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willThrow(new RuntimeException("API 호출 실패"));
+
+        // when
+        SseEmitter emitter = interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
     }
 
     private void setField(Object target, String fieldName, Object value) {

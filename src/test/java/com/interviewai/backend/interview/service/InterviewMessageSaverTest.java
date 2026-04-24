@@ -134,4 +134,49 @@ class InterviewMessageSaverTest {
         verify(emitter).completeWithError(any(IOException.class));
         verify(emitter, never()).complete();
     }
+
+    @Test
+    @DisplayName("기능_테스트_saveFirstQuestionMessage_AI_메시지를_저장하고_done_이벤트로_완료한다")
+    void 기능_테스트_saveFirstQuestionMessage_AI_메시지를_저장하고_done_이벤트로_완료한다() throws IOException {
+        // given
+        Long sessionId = 1L;
+        SseEmitter emitter = mock(SseEmitter.class);
+        InterviewSession sessionRef = mock(InterviewSession.class);
+        String aiContent = "안녕하세요! 첫 번째 질문입니다.";
+
+        given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+
+        // when
+        interviewMessageSaver.saveFirstQuestionMessage(emitter, sessionId, aiContent);
+
+        // then
+        verify(interviewSessionRepository).getReferenceById(sessionId);
+        verify(interviewMessageRepository).save(argThat(msg ->
+                msg.getRole() == MessageRole.AI && msg.getContent().equals(aiContent)));
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(emitter).complete();
+        verify(emitter, never()).completeWithError(any(Throwable.class));
+    }
+
+    @Test
+    @DisplayName("예외_테스트_saveFirstQuestionMessage_emitter_전송_실패시_completeWithError가_호출된다")
+    void 예외_테스트_saveFirstQuestionMessage_emitter_전송_실패시_completeWithError가_호출된다() throws IOException {
+        // given
+        Long sessionId = 1L;
+        SseEmitter emitter = mock(SseEmitter.class);
+        InterviewSession sessionRef = mock(InterviewSession.class);
+        String aiContent = "첫 번째 질문입니다.";
+
+        given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        // when
+        interviewMessageSaver.saveFirstQuestionMessage(emitter, sessionId, aiContent);
+
+        // then
+        verify(emitter).completeWithError(any(IOException.class));
+        verify(emitter, never()).complete();
+    }
 }
