@@ -82,6 +82,15 @@ job-crawler:
   max-text-length: 3000
   user-agent: "Mozilla/5.0 (compatible; InterviewAI/1.0)"
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
 cors:
   allowed-origins:
     - http://localhost:5173
