@@ -63,11 +63,67 @@ startInterview() — 단일 Tomcat 스레드에서 순차 블로킹
 
 ## 최적화 계획
 
-### 1단계: GitHub README 병렬 fetch
+### 1단계: GitHub README 병렬 fetch (#49) ✅
 
-- **대상**: `GithubApiClient.appendReadme()` 순차 루프
-- **방법**: `CompletableFuture.allOf()`로 병렬 실행
-- **예상 효과**: 5초 → 500ms
+- **이슈**: [#49](https://github.com/handokei/interviewAI/issues/49) / **PR**: [#50](https://github.com/handokei/interviewAI/pull/50)
+- **대상**: `GithubApiClient.appendRepositories()` 내 README fetch 순차 루프
+
+#### 변경 전 (순차)
+
+```java
+for (Object repoObj : repos) {
+    if (!Boolean.TRUE.equals(repo.get("fork"))) {
+        appendReadme(result, username, (String) repo.get("name"));  // 블로킹 × N
+    }
+}
+```
+
+- 최대 10개 repo의 README를 **한 번에 하나씩** HTTP 호출
+- 각 호출 ~500ms → 총 **~5초 소요**
+
+#### 변경 후 (병렬)
+
+```java
+// 1. non-fork repo별 CompletableFuture 생성 (LinkedHashMap으로 순서 보장)
+Map<String, CompletableFuture<String>> readmeFutures = new LinkedHashMap<>();
+for (...) {
+    readmeFutures.put(repoName, CompletableFuture.supplyAsync(
+        () -> fetchReadme(username, repoName)
+    ));
+}
+
+// 2. 모든 fetch 완료 대기 (30초 타임아웃)
+CompletableFuture.allOf(readmeFutures.values().toArray(new CompletableFuture[0]))
+    .orTimeout(30, TimeUnit.SECONDS)
+    .join();
+
+// 3. 결과 수집 (순서 유지)
+for (Map.Entry<String, CompletableFuture<String>> entry : readmeFutures.entrySet()) {
+    String readme = entry.getValue().join();
+    if (readme != null) {
+        result.append("  README: ").append(readme).append("\n");
+    }
+}
+```
+
+#### 기술적 의사결정
+
+| 결정 | 이유 |
+|------|------|
+| `CompletableFuture.supplyAsync()` (ForkJoinPool) | 별도 ExecutorService 관리 불필요, README fetch는 경량 I/O |
+| `LinkedHashMap` | repo 순서 보장 (HashMap은 순서 미보장) |
+| `orTimeout(30초)` | 개별 README가 hang 걸려도 전체 요청이 영원히 블로킹되지 않도록 |
+| `fetchReadme()` → null 반환 | 개별 실패가 다른 fetch에 영향 없음 (graceful degradation) |
+| `StringBuilder` 쓰레드 안전 | fetch는 String만 반환, StringBuilder는 메인 스레드에서만 조작 |
+
+#### 측정 결과
+
+| Client.Method | Before | After | 개선 |
+|---------------|--------|-------|------|
+| GithubApiClient.extractGithubInfo | **4.89s** | **1.57s** | **-68% (-3.32s)** |
+
+![Before](./screenshots/grafana-baseline.png)
+![After wt-1](./screenshots/grafana-after-wt1.png)
 
 ### 2단계: 외부 호출 병렬화
 
@@ -98,7 +154,7 @@ startInterview() — 단일 Tomcat 스레드에서 순차 블로킹
 
 | 단계 | 스크린샷 | 결과 |
 |------|---------|------|
-| Baseline | ![baseline](./screenshots/grafana-baseline.png) | 측정 완료 |
-| 1단계 후 | | 예정 |
+| Baseline | ![baseline](./screenshots/grafana-baseline.png) | extractGithubInfo **4.89s**, chat **5.51s** |
+| 1단계 후 | ![after-wt1](./screenshots/grafana-after-wt1.png) | extractGithubInfo **1.57s** (-68%) |
 | 2단계 후 | | 예정 |
 | 3단계 후 | | 예정 |
