@@ -35,6 +35,14 @@ public class InterviewController {
         return ResponseEntity.ok(ApiResponse.ok(interviewService.startInterview(userId, request)));
     }
 
+    @Operation(summary = "첫 질문 스트리밍")
+    @PostMapping(value = "/{sessionId}/first-question/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamFirstQuestion(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long sessionId) {
+        return interviewService.streamFirstQuestion(userId, sessionId);
+    }
+
     @Operation(summary = "메시지 전송 (답변)")
     @PostMapping("/{sessionId}/messages")
     public ResponseEntity<ApiResponse<InterviewSendMessageResponseDto>> sendMessage(
