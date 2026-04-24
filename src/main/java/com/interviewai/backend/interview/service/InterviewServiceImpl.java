@@ -37,8 +37,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -71,15 +73,20 @@ public class InterviewServiceImpl implements InterviewService {
             documents = userDocumentRepository.findAllByIdInAndUserId(request.getDocumentIds(), userId);
         }
 
-        String jobPostingContent = null;
+        CompletableFuture<String> crawlFuture = null;
         if (request.getMode() == InterviewMode.COMPANY && request.getJobPostingUrl() != null) {
-            jobPostingContent = jobCrawlerClient.crawl(request.getJobPostingUrl());
+            crawlFuture = CompletableFuture.supplyAsync(
+                    () -> jobCrawlerClient.crawl(request.getJobPostingUrl()));
         }
 
-        String githubInfo = null;
+        CompletableFuture<String> githubFuture = null;
         if (request.getGithubUrl() != null) {
-            githubInfo = githubApiClient.extractGithubInfo(request.getGithubUrl());
+            githubFuture = CompletableFuture.supplyAsync(
+                    () -> githubApiClient.extractGithubInfo(request.getGithubUrl()));
         }
+
+        String jobPostingContent = joinSafely(crawlFuture, 15);
+        String githubInfo = joinSafely(githubFuture, 30);
 
         InterviewSession session = InterviewSession.builder()
                 .user(user)
@@ -545,5 +552,17 @@ public class InterviewServiceImpl implements InterviewService {
                 .build();
 
         return interviewFeedbackRepository.save(feedback);
+    }
+
+    private String joinSafely(CompletableFuture<String> future, long timeoutSeconds) {
+        if (future == null) {
+            return null;
+        }
+        try {
+            return future.orTimeout(timeoutSeconds, TimeUnit.SECONDS).join();
+        } catch (Exception e) {
+            log.warn("외부 호출 실패 (graceful degradation): {}", e.getMessage());
+            return null;
+        }
     }
 }
