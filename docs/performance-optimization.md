@@ -268,20 +268,42 @@ useEffect(() => {
 
 #### 측정 결과
 
+| Client.Method | Baseline | After wt-2 | After wt-3 | 비고 |
+|---------------|----------|------------|------------|------|
+| ClaudeAiClient.**chat** | 5.51s | 5.59s | **680ms → 제거** | 동기 블로킹 완전 제거 |
+| ClaudeAiClient.**streamChat** | 2.49ms | - | **10.2ms** | SSE 스트리밍으로 전환 |
+| GithubApiClient.extractGithubInfo | 4.89s | 1.83s | **1.63s** | 병렬 fetch 유지 |
+| JobCrawlerClient.crawl | 미측정 | 474ms | **762ms** | 병렬 실행 유지 |
+
 | 지표 | Before (wt-2) | After (wt-3) |
 |------|--------------|-------------|
-| `startInterview` 응답 시간 | **~7.4초** (crawl+github+chat 전부 대기) | **~2초** (crawl+github만, chat 제거) |
-| 첫 질문 표시 방식 | 7.4초 후 한꺼번에 | 2초 후 **즉시 스트리밍 시작** |
-| 체감 대기 시간 | 7.4초 화면 멈춤 | **~2초** (세션 생성) + 스트리밍 |
+| `startInterview` 응답 시간 | **~7.4초** (crawl+github+chat 전부 대기) | **~1.6초** (crawl+github 병렬만) |
+| 첫 질문 표시 방식 | 7.4초 후 한꺼번에 | 1.6초 후 **즉시 스트리밍 시작** |
+| 체감 대기 시간 | 7.4초 화면 멈춤 | **~1.6초** (세션 생성) + 즉시 스트리밍 |
 
-### 최종 성과 요약
+![After wt-3](./screenshots/grafana-after-wt3.png)
+
+---
+
+## 최종 성과 요약
+
+### 단계별 개선
 
 | 단계 | 전체 소요 시간 | 체감 |
 |------|--------------|------|
 | Baseline | ~15초 (화면 멈춤) | 느림 |
 | 1단계 (README 병렬) | ~12초 | 조금 개선 |
 | 2단계 (외부 호출 병렬) | ~7.4초 | 절반 단축 |
-| **3단계 (첫 질문 스트리밍)** | **~2초 + 스트리밍** | **즉각 반응** |
+| **3단계 (첫 질문 스트리밍)** | **~1.6초 + 스트리밍** | **즉각 반응** |
+
+### 최종 수치 비교
+
+| 지표 | Baseline | 최종 | 개선률 |
+|------|----------|------|--------|
+| startInterview 응답 | ~15초 | **~1.6초** | **-89%** |
+| extractGithubInfo | 4.89초 | **1.63초** | **-67%** |
+| chat (동기 블로킹) | 5.51초 | **제거** | **-100%** |
+| 체감 대기 | 15초 화면 멈춤 | **1.6초 + 스트리밍** | **즉각 반응** |
 
 ---
 
@@ -294,4 +316,4 @@ useEffect(() => {
 | Baseline | ![baseline](./screenshots/grafana-baseline.png) | extractGithubInfo **4.89s**, chat **5.51s** |
 | 1단계 후 | ![after-wt1](./screenshots/grafana-after-wt1.png) | extractGithubInfo **1.57s** (-68%) |
 | 2단계 후 | ![after-wt2](./screenshots/grafana-after-wt2.png) | crawl **474ms** + github **1.83s** 동시 실행, 총 **~7.4초** (-50%) |
-| 3단계 후 | | startInterview **~2초** + 첫 질문 **즉시 스트리밍** |
+| 3단계 후 | ![after-wt3](./screenshots/grafana-after-wt3.png) | chat **제거**, startInterview **~1.6초** + 즉시 스트리밍 (**-89%**) |

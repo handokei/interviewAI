@@ -123,6 +123,10 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
+        if (interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)) {
+            throw new BusinessException(InterviewErrorCode.FIRST_QUESTION_ALREADY_SENT);
+        }
+
         String systemPrompt = session.getSystemPrompt();
 
         SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
@@ -165,18 +169,18 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
+        List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        List<ChatMessage> history = priorMessages.stream()
+                .map(msg -> new ChatMessage(
+                        msg.getRole() == MessageRole.AI ? "assistant" : "user",
+                        msg.getContent()))
+                .toList();
+
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(session)
                 .role(MessageRole.USER)
                 .content(request.getContent())
                 .build());
-
-        List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = messages.stream()
-                .map(msg -> new ChatMessage(
-                        msg.getRole() == MessageRole.AI ? "assistant" : "user",
-                        msg.getContent()))
-                .toList();
 
         List<UserDocument> documents = interviewSessionDocumentRepository.findBySessionId(sessionId)
                 .stream()
@@ -211,14 +215,14 @@ public class InterviewServiceImpl implements InterviewService {
             throw new BusinessException(InterviewErrorCode.SESSION_ALREADY_COMPLETED);
         }
 
-        interviewMessageSaver.saveUserMessage(sessionId, request.getContent());
-
-        List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = messages.stream()
+        List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        List<ChatMessage> history = priorMessages.stream()
                 .map(msg -> new ChatMessage(
                         msg.getRole() == MessageRole.AI ? "assistant" : "user",
                         msg.getContent()))
                 .toList();
+
+        interviewMessageSaver.saveUserMessage(sessionId, request.getContent());
 
         List<UserDocument> documents = interviewSessionDocumentRepository.findBySessionId(sessionId)
                 .stream()
