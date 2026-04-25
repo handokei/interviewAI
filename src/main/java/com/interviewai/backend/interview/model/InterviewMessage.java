@@ -1,5 +1,6 @@
 package com.interviewai.backend.interview.model;
 
+import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import jakarta.persistence.*;
 import lombok.*;
@@ -28,6 +29,16 @@ public class InterviewMessage {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Enumerated(EnumType.STRING)
+    @Column
+    private AnswerLevel answerLevel;
+
+    @Column
+    private Boolean suggestFinish;
+
+    @Column(columnDefinition = "TEXT")
+    private String qualityHint;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -37,5 +48,15 @@ public class InterviewMessage {
         this.session = session;
         this.role = role;
         this.content = content;
+    }
+
+    public void updateEvaluation(AnswerLevel answerLevel, boolean suggestFinish, String qualityHint) {
+        this.answerLevel = answerLevel;
+        this.suggestFinish = suggestFinish;
+        this.qualityHint = qualityHint;
+    }
+
+    public boolean isEvaluated() {
+        return this.answerLevel != null;
     }
 }

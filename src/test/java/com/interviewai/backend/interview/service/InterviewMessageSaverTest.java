@@ -1,6 +1,5 @@
 package com.interviewai.backend.interview.service;
 
-import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
@@ -12,10 +11,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
@@ -53,65 +54,48 @@ class InterviewMessageSaverTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_AI_메시지를_저장하고_suggestFinish_false로_완료한다")
-    void 기능_테스트_AI_메시지를_저장하고_suggestFinish_false로_완료한다() throws IOException {
+    @DisplayName("기능_테스트_AI_메시지를_저장하고_done_이벤트로_즉시_완료한다")
+    void 기능_테스트_AI_메시지를_저장하고_done_이벤트로_즉시_완료한다() throws IOException {
         // given
         Long sessionId = 1L;
         SseEmitter emitter = mock(SseEmitter.class);
         InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(false, AnswerLevel.NEEDS_IMPROVEMENT, "좋은 답변이었습니다.");
+        InterviewMessage savedMessage = InterviewMessage.builder()
+                .session(sessionRef).role(MessageRole.AI).content("좋은 답변입니다.").build();
+        ReflectionTestUtils.setField(savedMessage, "id", 100L);
 
         given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(savedMessage);
 
         // when
-        interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "좋은 답변입니다.", eval);
+        Long result = interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "좋은 답변입니다.");
 
         // then
-        verify(emitter).send(argThat((SseEmitter.SseEventBuilder builder) -> true));
-        verify(emitter).complete();
-        verify(emitter, never()).completeWithError(any(Throwable.class));
-    }
-
-    @Test
-    @DisplayName("기능_테스트_AI_메시지를_저장하고_suggestFinish_true로_완료한다")
-    void 기능_테스트_AI_메시지를_저장하고_suggestFinish_true로_완료한다() throws IOException {
-        // given
-        Long sessionId = 1L;
-        SseEmitter emitter = mock(SseEmitter.class);
-        InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(true, AnswerLevel.PASS, "전반적으로 훌륭한 답변이었습니다.");
-
-        given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-
-        // when
-        interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "수고하셨습니다.", eval);
-
-        // then
-        verify(emitter).send(argThat((SseEmitter.SseEventBuilder builder) -> true));
-        verify(emitter).complete();
-        verify(emitter, never()).completeWithError(any(Throwable.class));
-    }
-
-    @Test
-    @DisplayName("기능_테스트_answerLevel과_qualityHint가_SSE_done_이벤트에_포함된다")
-    void 기능_테스트_answerLevel과_qualityHint가_SSE_done_이벤트에_포함된다() throws IOException {
-        // given
-        Long sessionId = 1L;
-        SseEmitter emitter = mock(SseEmitter.class);
-        InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = new InterviewEvaluation(false, AnswerLevel.PASS, "시간복잡도 언급이 좋았어요.");
-
-        given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-
-        // when
-        interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "답변입니다.", eval);
-
-        // then
+        assertThat(result).isEqualTo(100L);
         verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(emitter).complete();
+        verify(emitter, never()).completeWithError(any(Throwable.class));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_저장된_AI_메시지의_ID를_반환한다")
+    void 기능_테스트_저장된_AI_메시지의_ID를_반환한다() throws IOException {
+        // given
+        Long sessionId = 1L;
+        SseEmitter emitter = mock(SseEmitter.class);
+        InterviewSession sessionRef = mock(InterviewSession.class);
+        InterviewMessage savedMessage = InterviewMessage.builder()
+                .session(sessionRef).role(MessageRole.AI).content("수고하셨습니다.").build();
+        ReflectionTestUtils.setField(savedMessage, "id", 42L);
+
+        given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(savedMessage);
+
+        // when
+        Long result = interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "수고하셨습니다.");
+
+        // then
+        assertThat(result).isEqualTo(42L);
     }
 
     @Test
@@ -121,14 +105,16 @@ class InterviewMessageSaverTest {
         Long sessionId = 1L;
         SseEmitter emitter = mock(SseEmitter.class);
         InterviewSession sessionRef = mock(InterviewSession.class);
-        InterviewEvaluation eval = InterviewEvaluation.fallback();
+        InterviewMessage savedMessage = InterviewMessage.builder()
+                .session(sessionRef).role(MessageRole.AI).content("답변입니다.").build();
+        ReflectionTestUtils.setField(savedMessage, "id", 1L);
 
         given(interviewSessionRepository.getReferenceById(sessionId)).willReturn(sessionRef);
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(savedMessage);
         doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
 
         // when
-        interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "답변입니다.", eval);
+        interviewMessageSaver.saveAiMessageAndComplete(emitter, sessionId, "답변입니다.");
 
         // then
         verify(emitter).completeWithError(any(IOException.class));

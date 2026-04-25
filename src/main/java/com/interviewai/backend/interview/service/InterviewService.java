@@ -32,4 +32,6 @@ public interface InterviewService {
     void deleteInterviews(Long userId, List<Long> sessionIds);
 
     InterviewStatsResponseDto getMyStats(Long userId);
+
+    InterviewMessageEvalResponseDto getLatestEvaluation(Long userId, Long sessionId);
 }

@@ -61,6 +61,14 @@ public class InterviewController {
         return interviewService.streamMessage(userId, sessionId, request);
     }
 
+    @Operation(summary = "최신 AI 메시지 평가 조회")
+    @GetMapping("/{sessionId}/messages/latest-eval")
+    public ResponseEntity<ApiResponse<InterviewMessageEvalResponseDto>> getLatestEvaluation(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long sessionId) {
+        return ResponseEntity.ok(ApiResponse.ok(interviewService.getLatestEvaluation(userId, sessionId)));
+    }
+
     @Operation(summary = "면접 종료 및 피드백 생성")
     @PostMapping("/{sessionId}/finish")
     public ResponseEntity<ApiResponse<InterviewFeedbackResponseDto>> finishInterview(

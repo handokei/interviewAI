@@ -50,27 +50,21 @@ public class InterviewMessageSaver {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveAiMessageAndComplete(SseEmitter emitter, Long sessionId,
-                                         String aiContent, InterviewEvaluation eval) {
+    public Long saveAiMessageAndComplete(SseEmitter emitter, Long sessionId, String aiContent) {
         InterviewSession sessionRef = interviewSessionRepository.getReferenceById(sessionId);
-        interviewMessageRepository.save(InterviewMessage.builder()
+        InterviewMessage saved = interviewMessageRepository.save(InterviewMessage.builder()
                 .session(sessionRef)
                 .role(MessageRole.AI)
                 .content(aiContent)
                 .build());
 
-        String qualityHintEscaped = eval.qualityHint().replace("\\", "\\\\").replace("\"", "\\\"");
-        String doneData = "{\"suggestFinish\":" + eval.suggestFinish()
-                + ",\"answerLevel\":\"" + eval.answerLevel().name()
-                + "\",\"qualityHint\":\"" + qualityHintEscaped + "\"}";
-
         try {
-            emitter.send(SseEmitter.event()
-                    .name("done")
-                    .data(doneData));
+            emitter.send(SseEmitter.event().name("done").data("{}"));
             emitter.complete();
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
+
+        return saved.getId();
     }
 }
