@@ -704,7 +704,12 @@ class InterviewServiceImplTest {
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
                 .willReturn(aiResponse, "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
@@ -736,7 +741,12 @@ class InterviewServiceImplTest {
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
                 .willReturn("수고하셨습니다.", "{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"전반적으로 훌륭했습니다.\"}");
@@ -767,7 +777,12 @@ class InterviewServiceImplTest {
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
                 .willReturn("다음 질문입니다.", "invalid json response");
@@ -799,7 +814,12 @@ class InterviewServiceImplTest {
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
                 .willReturn("다음 질문입니다.", "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋았어요.\"}");
@@ -1052,7 +1072,12 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         lenient().when(claudeAiClient.streamChat(any(), any(), any())).thenReturn(Flux.just("안녕", "하세요"));
 
@@ -1154,7 +1179,12 @@ class InterviewServiceImplTest {
         }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
         given(claudeAiClient.chat(any(), any(), any()))
@@ -1190,7 +1220,12 @@ class InterviewServiceImplTest {
         }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
         given(claudeAiClient.chat(any(), any(), any()))
@@ -1221,7 +1256,12 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any()))
                 .willReturn(Flux.error(new RuntimeException("스트림 오류")));
@@ -1251,7 +1291,12 @@ class InterviewServiceImplTest {
                 .build();
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any()))
                 .willThrow(new RuntimeException("API 오류"));
@@ -1320,7 +1365,12 @@ class InterviewServiceImplTest {
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        InterviewMessage priorAiMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
+        InterviewMessage priorUserMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.chat(any(), any(), any()))
                 .willReturn("다음 질문입니다.",
