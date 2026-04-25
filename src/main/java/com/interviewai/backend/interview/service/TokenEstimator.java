@@ -5,6 +5,8 @@ import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -17,9 +19,15 @@ import java.util.List;
 public class TokenEstimator {
 
     private final int charsPerToken;
+    private final MeterRegistry meterRegistry;
+    private final Counter trimCounter;
 
-    public TokenEstimator(InterviewProperties interviewProperties) {
+    public TokenEstimator(InterviewProperties interviewProperties, MeterRegistry meterRegistry) {
         this.charsPerToken = interviewProperties.getPrompt().getCharsPerToken();
+        this.meterRegistry = meterRegistry;
+        this.trimCounter = Counter.builder("interview.history.trimmed")
+                .description("Number of times history trimming was triggered")
+                .register(meterRegistry);
     }
 
     public int estimateTokens(String text) {
@@ -60,6 +68,8 @@ public class TokenEstimator {
         result.add(first);
         result.addAll(included);
 
+        trimCounter.increment();
+        recordMetrics("trimHistory", history.size(), result.size(), firstTokens + accumulated);
         log.debug("히스토리 trimming: {} → {} 메시지 ({}→{} 추정 토큰)",
                 history.size(), result.size(), totalTokens, firstTokens + accumulated);
         return result;
@@ -115,6 +125,9 @@ public class TokenEstimator {
         result.addAll(included);
 
         long priorityKept = priority.stream().filter(included::contains).count();
+        trimCounter.increment();
+        int trimmedTokens = result.stream().mapToInt(m -> estimateTokens(m.getContent())).sum();
+        recordMetrics("trimHistoryWithPriority", messages.size(), result.size(), trimmedTokens);
         log.debug("중요도 기반 trimming: {} → {} 메시지 (STUDY_REQUIRED {} 보존)",
                 messages.size(), result.size(), priorityKept);
         return toChatMessages(result);
@@ -126,5 +139,14 @@ public class TokenEstimator {
                         msg.getRole() == MessageRole.AI ? "assistant" : "user",
                         msg.getContent()))
                 .toList();
+    }
+
+    private void recordMetrics(String method, int originalCount, int trimmedCount, int estimatedTokens) {
+        meterRegistry.gauge("interview.history.original.count",
+                io.micrometer.core.instrument.Tags.of("method", method), originalCount);
+        meterRegistry.gauge("interview.history.trimmed.count",
+                io.micrometer.core.instrument.Tags.of("method", method), trimmedCount);
+        meterRegistry.gauge("interview.history.estimated.tokens",
+                io.micrometer.core.instrument.Tags.of("method", method), estimatedTokens);
     }
 }

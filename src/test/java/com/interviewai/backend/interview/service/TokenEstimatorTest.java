@@ -6,6 +6,7 @@ import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class TokenEstimatorTest {
     void setUp() {
         InterviewProperties properties = new InterviewProperties();
         properties.getPrompt().setCharsPerToken(3);
-        tokenEstimator = new TokenEstimator(properties);
+        tokenEstimator = new TokenEstimator(properties, new SimpleMeterRegistry());
     }
 
     @Test
