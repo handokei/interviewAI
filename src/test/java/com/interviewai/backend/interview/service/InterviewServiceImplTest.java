@@ -94,6 +94,9 @@ class InterviewServiceImplTest {
     private InterviewMessageSaver interviewMessageSaver;
 
     @Mock
+    private InterviewEvaluationService interviewEvaluationService;
+
+    @Mock
     private InterviewProperties interviewProperties;
 
     private User testUser;
@@ -686,8 +689,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_메시지_전송_시_AI_응답이_그대로_반환된다")
-    void 기능_테스트_메시지_전송_시_AI_응답이_그대로_반환된다() {
+    @DisplayName("기능_테스트_메시지_전송_시_AI_응답이_그대로_반환되고_비동기_평가가_트리거된다")
+    void 기능_테스트_메시지_전송_시_AI_응답이_그대로_반환되고_비동기_평가가_트리거된다() {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -701,9 +704,11 @@ class InterviewServiceImplTest {
                 .build();
 
         String aiResponse = "다음 질문입니다.";
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(100L);
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
         InterviewMessage priorAiMsg = InterviewMessage.builder()
                 .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
         InterviewMessage priorUserMsg = InterviewMessage.builder()
@@ -711,8 +716,7 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
                 .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn(aiResponse, "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
+        given(claudeAiClient.chat(any(), any(), any())).willReturn(aiResponse);
 
         // when
         InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
@@ -720,136 +724,10 @@ class InterviewServiceImplTest {
         // then
         assertThat(response.getAiResponse()).isEqualTo(aiResponse);
         assertThat(response.isSuggestFinish()).isFalse();
-        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
-        assertThat(response.getQualityHint()).isEqualTo("좋은 답변이었습니다.");
-    }
-
-    @Test
-    @DisplayName("기능_테스트_AI_평가_결과_suggestFinish가_true면_true로_반환된다")
-    void 기능_테스트_AI_평가_결과_suggestFinish가_true면_true로_반환된다() {
-        // given
-        Long userId = 1L;
-        Long sessionId = 1L;
-        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
-        setField(request, "content", "마지막 답변입니다.");
-
-        InterviewSession session = InterviewSession.builder()
-                .user(testUser)
-                .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.JUNIOR)
-                .build();
-
-        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        InterviewMessage priorAiMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
-        InterviewMessage priorUserMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
-                .willReturn(List.of(priorAiMsg, priorUserMsg));
-        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("수고하셨습니다.", "{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"전반적으로 훌륭했습니다.\"}");
-
-        // when
-        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
-
-        // then
-        assertThat(response.getAiResponse()).isEqualTo("수고하셨습니다.");
-        assertThat(response.isSuggestFinish()).isTrue();
-        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.PASS);
-    }
-
-    @Test
-    @DisplayName("기능_테스트_AI_평가_JSON_파싱_실패시_fallback_값으로_반환된다")
-    void 기능_테스트_AI_평가_JSON_파싱_실패시_fallback_값으로_반환된다() {
-        // given
-        Long userId = 1L;
-        Long sessionId = 1L;
-        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
-        setField(request, "content", "답변입니다.");
-
-        InterviewSession session = InterviewSession.builder()
-                .user(testUser)
-                .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.SENIOR)
-                .build();
-
-        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        InterviewMessage priorAiMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
-        InterviewMessage priorUserMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
-                .willReturn(List.of(priorAiMsg, priorUserMsg));
-        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("다음 질문입니다.", "invalid json response");
-
-        // when
-        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
-
-        // then
-        assertThat(response.isSuggestFinish()).isFalse();
-        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
-        assertThat(response.getQualityHint()).isEqualTo("답변이 접수되었습니다.");
-    }
-
-    @Test
-    @DisplayName("기능_테스트_buildEvalPrompt_레벨과_jobTitle이_포함된_프롬프트를_생성한다")
-    void 기능_테스트_buildEvalPrompt_레벨과_jobTitle이_포함된_프롬프트를_생성한다() {
-        // given
-        Long userId = 1L;
-        Long sessionId = 1L;
-        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
-        setField(request, "content", "답변입니다.");
-
-        InterviewSession session = InterviewSession.builder()
-                .user(testUser)
-                .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.JUNIOR)
-                .jobTitle("백엔드 개발자")
-                .build();
-
-        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        InterviewMessage priorAiMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
-        InterviewMessage priorUserMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
-                .willReturn(List.of(priorAiMsg, priorUserMsg));
-        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("다음 질문입니다.", "{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋았어요.\"}");
-
-        // when & then (프롬프트 내용 검증은 실제 호출을 통해 간접 확인)
-        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
-        assertThat(response).isNotNull();
-        verify(claudeAiClient, times(2)).chat(any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("기능_테스트_evaluateWithAi_정상_JSON_파싱된_결과를_반환한다")
-    void 기능_테스트_evaluateWithAi_정상_JSON_파싱된_결과를_반환한다() {
-        // given
-        InterviewSession session = InterviewSession.builder()
-                .user(testUser)
-                .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.JUNIOR)
-                .build();
-
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"정확한 답변이었습니다.\"}");
-
-        // when
-        InterviewEvaluation eval = interviewService.evaluateWithAi(session, List.of(), "AI 응답");
-
-        // then
-        assertThat(eval.suggestFinish()).isTrue();
-        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
-        assertThat(eval.qualityHint()).isEqualTo("정확한 답변이었습니다.");
+        assertThat(response.getAnswerLevel()).isNull();
+        assertThat(response.getQualityHint()).isNull();
+        verify(claudeAiClient, times(1)).chat(any(), any(), any());
+        verify(interviewEvaluationService).evaluateAsync(eq(100L), any(), any(), eq(aiResponse));
     }
 
     @Test
@@ -1175,8 +1053,8 @@ class InterviewServiceImplTest {
         CountDownLatch latch = new CountDownLatch(1);
         doAnswer(invocation -> {
             latch.countDown();
-            return null;
-        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+            return 100L;
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         InterviewMessage priorAiMsg = InterviewMessage.builder()
@@ -1187,15 +1065,14 @@ class InterviewServiceImplTest {
                 .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
 
         // when
         interviewService.streamMessage(userId, sessionId, request);
 
         // then
         assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
-        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), eq(sessionId), eq("토큰"), any(InterviewEvaluation.class));
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), eq(sessionId), eq("토큰"));
+        verify(interviewEvaluationService).evaluateAsync(eq(100L), any(), any(), eq("토큰"));
     }
 
     @Test
@@ -1217,7 +1094,7 @@ class InterviewServiceImplTest {
         doAnswer(invocation -> {
             latch.countDown();
             throw new RuntimeException("DB 오류");
-        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+        }).when(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any());
 
         given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
         InterviewMessage priorAiMsg = InterviewMessage.builder()
@@ -1228,8 +1105,6 @@ class InterviewServiceImplTest {
                 .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
         given(claudeAiClient.streamChat(any(), any(), any())).willReturn(Flux.just("토큰"));
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"좋은 답변이었습니다.\"}");
 
         // when
         interviewService.streamMessage(userId, sessionId, request);
@@ -1237,7 +1112,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
         Thread.sleep(100);
-        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any(), any());
+        verify(interviewMessageSaver).saveAiMessageAndComplete(any(), any(), any());
     }
 
     @Test
@@ -1346,42 +1221,6 @@ class InterviewServiceImplTest {
         assertThat(result).isNotNull();
         assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
         verify(interviewFeedbackRepository).save(any(InterviewFeedback.class));
-    }
-
-    @Test
-    @DisplayName("기능_테스트_AI_평가_잘못된_answerLevel_값이면_NEEDS_IMPROVEMENT_fallback으로_반환된다")
-    void 기능_테스트_AI_평가_잘못된_answerLevel_값이면_NEEDS_IMPROVEMENT_fallback으로_반환된다() {
-        // given
-        Long userId = 1L;
-        Long sessionId = 1L;
-        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
-        setField(request, "content", "답변입니다.");
-
-        InterviewSession session = InterviewSession.builder()
-                .user(testUser)
-                .mode(InterviewMode.BASIC)
-                .level(InterviewLevel.JUNIOR)
-                .build();
-
-        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
-        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null);
-        InterviewMessage priorAiMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.AI).content("면접 질문입니다.").build();
-        InterviewMessage priorUserMsg = InterviewMessage.builder()
-                .session(session).role(MessageRole.USER).content("사용자 답변입니다.").build();
-        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
-                .willReturn(List.of(priorAiMsg, priorUserMsg));
-        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
-        given(claudeAiClient.chat(any(), any(), any()))
-                .willReturn("다음 질문입니다.",
-                        "{\"suggestFinish\":false,\"answerLevel\":\"INVALID_LEVEL\",\"qualityHint\":\"힌트\"}");
-
-        // when
-        InterviewSendMessageResponseDto response = interviewService.sendMessage(userId, sessionId, request);
-
-        // then
-        assertThat(response.getAnswerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
-        assertThat(response.getQualityHint()).isEqualTo("힌트");
     }
 
     @Test
