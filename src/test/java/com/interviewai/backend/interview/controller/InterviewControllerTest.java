@@ -384,6 +384,55 @@ class InterviewControllerTest {
     }
 
     // -------------------------------------------------------------------------
+    // GET /api/interviews/{sessionId}/messages/latest-eval — getLatestEvaluation
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_최신_AI_메시지_평가_조회_정상_요청_시_200과_평가_결과를_반환한다")
+    void 기능_테스트_최신_AI_메시지_평가_조회_정상_요청_시_200과_평가_결과를_반환한다() throws Exception {
+        InterviewMessageEvalResponseDto response = InterviewMessageEvalResponseDto.builder()
+                .evaluated(true)
+                .suggestFinish(false)
+                .answerLevel(AnswerLevel.PASS)
+                .qualityHint("구체적인 예시를 들어주세요.")
+                .build();
+
+        given(interviewService.getLatestEvaluation(eq(USER_ID), eq(SESSION_ID))).willReturn(response);
+
+        mockMvc.perform(get("/api/interviews/{sessionId}/messages/latest-eval", SESSION_ID)
+                        .with(authentication(auth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.evaluated").value(true))
+                .andExpect(jsonPath("$.data.answerLevel").value("PASS"))
+                .andExpect(jsonPath("$.data.qualityHint").value("구체적인 예시를 들어주세요."));
+
+        verify(interviewService).getLatestEvaluation(eq(USER_ID), eq(SESSION_ID));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_최신_AI_메시지_평가_미완료_시_evaluated_false를_반환한다")
+    void 기능_테스트_최신_AI_메시지_평가_미완료_시_evaluated_false를_반환한다() throws Exception {
+        InterviewMessageEvalResponseDto response = InterviewMessageEvalResponseDto.builder()
+                .evaluated(false)
+                .suggestFinish(null)
+                .answerLevel(null)
+                .qualityHint(null)
+                .build();
+
+        given(interviewService.getLatestEvaluation(eq(USER_ID), eq(SESSION_ID))).willReturn(response);
+
+        mockMvc.perform(get("/api/interviews/{sessionId}/messages/latest-eval", SESSION_ID)
+                        .with(authentication(auth)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.evaluated").value(false))
+                .andExpect(jsonPath("$.data.answerLevel").doesNotExist());
+
+        verify(interviewService).getLatestEvaluation(eq(USER_ID), eq(SESSION_ID));
+    }
+
+    // -------------------------------------------------------------------------
     // GET /api/interviews/stats — getMyStats
     // -------------------------------------------------------------------------
 

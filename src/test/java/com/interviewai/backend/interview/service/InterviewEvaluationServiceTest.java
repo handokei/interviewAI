@@ -160,6 +160,136 @@ class InterviewEvaluationServiceTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_SENIOR_레벨_프롬프트에_경력_개발자_설명이_포함된다")
+    void 기능_테스트_SENIOR_레벨_프롬프트에_경력_개발자_설명이_포함된다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.SENIOR)
+                .build();
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).contains("경력 개발자");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_jobTitle이_null이면_프롬프트에_지원_직무_줄이_포함되지_않는다")
+    void 기능_테스트_jobTitle이_null이면_프롬프트에_지원_직무_줄이_포함되지_않는다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        // jobTitle 설정 안 함 — null
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"힌트\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).doesNotContain("지원 직무:");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_jobTitle이_있으면_프롬프트에_지원_직무_줄이_포함된다")
+    void 기능_테스트_jobTitle이_있으면_프롬프트에_지원_직무_줄이_포함된다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .jobTitle("백엔드 개발자")
+                .build();
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"훌륭합니다.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).contains("지원 직무: 백엔드 개발자");
+        assertThat(eval.suggestFinish()).isTrue();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parseEvaluation_suggestFinish_필드_없는_JSON이면_false로_반환된다")
+    void 기능_테스트_parseEvaluation_suggestFinish_필드_없는_JSON이면_false로_반환된다() {
+        // given
+        String json = "{\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}";
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.parseEvaluation(json);
+
+        // then
+        assertThat(eval.suggestFinish()).isFalse();
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(eval.qualityHint()).isEqualTo("좋습니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parseEvaluation_answerLevel_필드_없는_JSON이면_NEEDS_IMPROVEMENT를_반환한다")
+    void 기능_테스트_parseEvaluation_answerLevel_필드_없는_JSON이면_NEEDS_IMPROVEMENT를_반환한다() {
+        // given
+        String json = "{\"suggestFinish\":true,\"qualityHint\":\"힌트\"}";
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.parseEvaluation(json);
+
+        // then
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(eval.suggestFinish()).isTrue();
+        assertThat(eval.qualityHint()).isEqualTo("힌트");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parseEvaluation_qualityHint_필드_없는_JSON이면_기본_메시지를_반환한다")
+    void 기능_테스트_parseEvaluation_qualityHint_필드_없는_JSON이면_기본_메시지를_반환한다() {
+        // given
+        String json = "{\"suggestFinish\":false,\"answerLevel\":\"PASS\"}";
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.parseEvaluation(json);
+
+        // then
+        assertThat(eval.qualityHint()).isEqualTo("답변이 접수되었습니다.");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parseEvaluation_중괄호가_없는_문자열이면_fallback을_반환한다")
+    void 기능_테스트_parseEvaluation_중괄호가_없는_문자열이면_fallback을_반환한다() {
+        // given
+        String json = "suggestFinish:true,answerLevel:PASS";
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.parseEvaluation(json);
+
+        // then
+        assertThat(eval.suggestFinish()).isFalse();
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(eval.qualityHint()).isEqualTo("답변이 접수되었습니다.");
+    }
+
+    @Test
     @DisplayName("기능_테스트_evaluateAsync_메시지_미발견시_예외_없이_종료된다")
     void 기능_테스트_evaluateAsync_메시지_미발견시_예외_없이_종료된다() {
         // given
@@ -176,5 +306,30 @@ class InterviewEvaluationServiceTest {
 
         // when — 예외 없이 종료되어야 함
         interviewEvaluationService.evaluateAsync(aiMessageId, session, List.of(), "AI 응답");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateAsync_AI_성공_후_메시지가_사라지면_catch를_거쳐_fallback이_적용된다")
+    void 기능_테스트_evaluateAsync_AI_성공_후_메시지가_사라지면_catch를_거쳐_fallback이_적용된다() {
+        // given
+        Long aiMessageId = 200L;
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        // AI 평가 성공 후 findById가 empty 반환 → orElseThrow 람다 실행 → catch 블록으로 이동
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}");
+        given(interviewMessageRepository.findById(aiMessageId))
+                .willReturn(Optional.empty());  // 두 번 모두 empty
+
+        // when — catch 블록에서 ifPresent가 호출되나 empty이므로 아무 일도 없음
+        interviewEvaluationService.evaluateAsync(aiMessageId, session, List.of(), "AI 응답");
+
+        // then — 예외 없이 종료되었는지 확인
+        org.mockito.Mockito.verify(interviewMessageRepository,
+                org.mockito.Mockito.times(2)).findById(aiMessageId);
     }
 }

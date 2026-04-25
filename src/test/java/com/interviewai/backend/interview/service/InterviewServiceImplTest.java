@@ -1580,6 +1580,123 @@ class InterviewServiceImplTest {
         assertThat(emitter).isNotNull();
     }
 
+    @Test
+    @DisplayName("기능_테스트_getLatestEvaluation_평가_완료된_메시지의_결과를_반환한다")
+    void 기능_테스트_getLatestEvaluation_평가_완료된_메시지의_결과를_반환한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage latestAiMessage = InterviewMessage.builder()
+                .session(session)
+                .role(MessageRole.AI)
+                .content("다음 질문입니다.")
+                .build();
+        latestAiMessage.updateEvaluation(
+                com.interviewai.backend.interview.enums.AnswerLevel.PASS,
+                true,
+                "훌륭한 답변입니다."
+        );
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewMessageRepository.findTopBySessionIdAndRoleOrderByCreatedAtDesc(
+                sessionId, MessageRole.AI))
+                .willReturn(Optional.of(latestAiMessage));
+
+        // when
+        InterviewMessageEvalResponseDto result = interviewService.getLatestEvaluation(userId, sessionId);
+
+        // then
+        assertThat(result.isEvaluated()).isTrue();
+        assertThat(result.getSuggestFinish()).isTrue();
+        assertThat(result.getAnswerLevel()).isEqualTo(com.interviewai.backend.interview.enums.AnswerLevel.PASS);
+        assertThat(result.getQualityHint()).isEqualTo("훌륭한 답변입니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_getLatestEvaluation_평가_미완료된_메시지를_반환한다")
+    void 기능_테스트_getLatestEvaluation_평가_미완료된_메시지를_반환한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage latestAiMessage = InterviewMessage.builder()
+                .session(session)
+                .role(MessageRole.AI)
+                .content("다음 질문입니다.")
+                .build();
+        // updateEvaluation 호출 없음 — answerLevel == null → isEvaluated() == false
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewMessageRepository.findTopBySessionIdAndRoleOrderByCreatedAtDesc(
+                sessionId, MessageRole.AI))
+                .willReturn(Optional.of(latestAiMessage));
+
+        // when
+        InterviewMessageEvalResponseDto result = interviewService.getLatestEvaluation(userId, sessionId);
+
+        // then
+        assertThat(result.isEvaluated()).isFalse();
+        assertThat(result.getAnswerLevel()).isNull();
+        assertThat(result.getSuggestFinish()).isNull();
+        assertThat(result.getQualityHint()).isNull();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_getLatestEvaluation_존재하지_않는_세션이면_예외가_발생한다")
+    void 예외_테스트_getLatestEvaluation_존재하지_않는_세션이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.getLatestEvaluation(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_getLatestEvaluation_AI_메시지가_없으면_예외가_발생한다")
+    void 예외_테스트_getLatestEvaluation_AI_메시지가_없으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewMessageRepository.findTopBySessionIdAndRoleOrderByCreatedAtDesc(
+                sessionId, MessageRole.AI))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.getLatestEvaluation(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("메시지");
+    }
+
     private void setField(Object target, String fieldName, Object value) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
