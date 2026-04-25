@@ -24,9 +24,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Optional;
 
+import com.interviewai.backend.global.config.InterviewProperties;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +45,12 @@ class InterviewEvaluationServiceTest {
     @Mock
     private ClaudeAiClient claudeAiClient;
 
+    @Mock
+    private TokenEstimator tokenEstimator;
+
+    @Mock
+    private InterviewProperties interviewProperties;
+
     private User testUser;
 
     @BeforeEach
@@ -53,6 +63,11 @@ class InterviewEvaluationServiceTest {
                 .profileImageUrl(null)
                 .role(UserRole.USER)
                 .build();
+
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        lenient().when(interviewProperties.getPrompt()).thenReturn(prompt);
+        lenient().when(tokenEstimator.trimHistory(any(), anyInt()))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
     @Test

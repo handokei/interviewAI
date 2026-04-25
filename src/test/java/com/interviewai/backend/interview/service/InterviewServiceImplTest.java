@@ -47,6 +47,8 @@ import reactor.core.publisher.Flux;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doAnswer;
@@ -97,6 +99,9 @@ class InterviewServiceImplTest {
     private InterviewEvaluationService interviewEvaluationService;
 
     @Mock
+    private TokenEstimator tokenEstimator;
+
+    @Mock
     private InterviewProperties interviewProperties;
 
     private User testUser;
@@ -116,6 +121,29 @@ class InterviewServiceImplTest {
         InterviewProperties.Sse sse = new InterviewProperties.Sse();
         lenient().when(interviewProperties.getPrompt()).thenReturn(prompt);
         lenient().when(interviewProperties.getSse()).thenReturn(sse);
+
+        lenient().when(tokenEstimator.trimHistoryWithPriority(any(), anyInt()))
+                .thenAnswer(inv -> {
+                    List<InterviewMessage> msgs = inv.getArgument(0);
+                    return msgs.stream()
+                            .map(msg -> new com.interviewai.backend.client.dto.ChatMessage(
+                                    msg.getRole() == com.interviewai.backend.interview.enums.MessageRole.AI ? "assistant" : "user",
+                                    msg.getContent()))
+                            .toList();
+                });
+        lenient().when(tokenEstimator.trimHistory(any(), anyInt()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(tokenEstimator.toChatMessages(any()))
+                .thenAnswer(inv -> {
+                    List<InterviewMessage> msgs = inv.getArgument(0);
+                    if (msgs == null) return List.of();
+                    return msgs.stream()
+                            .map(msg -> new com.interviewai.backend.client.dto.ChatMessage(
+                                    msg.getRole() == com.interviewai.backend.interview.enums.MessageRole.AI ? "assistant" : "user",
+                                    msg.getContent()))
+                            .toList();
+                });
+        lenient().when(tokenEstimator.estimateTokens(anyString())).thenReturn(100);
     }
 
     @Test
@@ -427,6 +455,37 @@ class InterviewServiceImplTest {
         // then
         assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
         assertThat(result.getStrengths()).isEqualTo("좋아요");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_토큰_초과시_trimming된_대화로_피드백을_생성한다")
+    void 기능_테스트_finishInterview_토큰_초과시_trimming된_대화로_피드백을_생성한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        lenient().when(tokenEstimator.estimateTokens(anyString())).thenReturn(50000); // 30000 초과
+        lenient().when(tokenEstimator.toChatMessages(any())).thenReturn(List.of());
+        lenient().when(tokenEstimator.trimHistory(any(), anyInt())).thenReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"좋음\",\"improvements\":\"없음\",\"fullReport\":\"리포트\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result).isNotNull();
+        verify(tokenEstimator).trimHistory(any(), eq(30000));
     }
 
     @Test
