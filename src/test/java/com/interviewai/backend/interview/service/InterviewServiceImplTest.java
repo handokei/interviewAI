@@ -1071,6 +1071,7 @@ class InterviewServiceImplTest {
 
         // then
         assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(200);
         verify(interviewMessageSaver).saveAiMessageAndComplete(any(), eq(sessionId), eq("토큰"));
         verify(interviewEvaluationService).evaluateAsync(eq(100L), any(), any(), eq("토큰"));
     }
