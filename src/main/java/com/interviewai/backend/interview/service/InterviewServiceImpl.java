@@ -539,9 +539,18 @@ public class InterviewServiceImpl implements InterviewService {
                 .findTopBySessionIdAndRoleOrderByCreatedAtDesc(sessionId, MessageRole.AI)
                 .orElseThrow(() -> new BusinessException(InterviewErrorCode.MESSAGE_NOT_FOUND));
 
+        if (!latestAi.isEvaluated()) {
+            return InterviewMessageEvalResponseDto.builder()
+                    .evaluated(false)
+                    .build();
+        }
+
+        boolean suggestFinish = interviewMessageRepository
+                .existsBySessionIdAndSuggestFinishTrue(sessionId);
+
         return InterviewMessageEvalResponseDto.builder()
-                .evaluated(latestAi.isEvaluated())
-                .suggestFinish(latestAi.getSuggestFinish())
+                .evaluated(true)
+                .suggestFinish(suggestFinish)
                 .answerLevel(latestAi.getAnswerLevel())
                 .qualityHint(latestAi.getQualityHint())
                 .build();
