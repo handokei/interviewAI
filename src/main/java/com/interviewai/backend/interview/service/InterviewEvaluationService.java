@@ -63,6 +63,12 @@ public class InterviewEvaluationService {
         if (session.getJobTitle() != null) {
             prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n");
         }
+        String summary = session.getConversationSummary();
+        if (summary != null && !summary.isBlank()) {
+            prompt.append("\n=== 이전 대화 요약 (참고용) ===\n");
+            prompt.append(summary).append("\n\n");
+        }
+
         prompt.append("\n=== 면접 대화 ===\n");
         for (ChatMessage msg : trimmedHistory) {
             String role = "assistant".equals(msg.role()) ? "[면접관]" : "[지원자]";

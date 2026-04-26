@@ -59,6 +59,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final JobCrawlerClient jobCrawlerClient;
     private final InterviewMessageSaver interviewMessageSaver;
     private final InterviewEvaluationService interviewEvaluationService;
+    private final ConversationSummaryService conversationSummaryService;
     private final TokenEstimator tokenEstimator;
     private final InterviewProperties interviewProperties;
 
@@ -172,8 +173,13 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = tokenEstimator.trimHistoryWithPriority(
+        TrimResult trimResult = tokenEstimator.trimHistoryWithPriorityAndReport(
                 priorMessages, interviewProperties.getPrompt().getMaxHistoryTokens());
+        List<ChatMessage> history = trimResult.retained();
+
+        if (trimResult.wasTrimmed() && interviewProperties.getPrompt().isSummaryEnabled()) {
+            conversationSummaryService.generateSummaryAsync(sessionId, trimResult.trimmed());
+        }
 
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(session)
@@ -215,8 +221,13 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = tokenEstimator.trimHistoryWithPriority(
+        TrimResult trimResult = tokenEstimator.trimHistoryWithPriorityAndReport(
                 priorMessages, interviewProperties.getPrompt().getMaxHistoryTokens());
+        List<ChatMessage> history = trimResult.retained();
+
+        if (trimResult.wasTrimmed() && interviewProperties.getPrompt().isSummaryEnabled()) {
+            conversationSummaryService.generateSummaryAsync(sessionId, trimResult.trimmed());
+        }
 
         interviewMessageSaver.saveUserMessage(sessionId, request.getContent());
 
@@ -453,6 +464,12 @@ public class InterviewServiceImpl implements InterviewService {
     private String buildSendMessageSystemPrompt(InterviewSession session, List<UserDocument> documents,
                                                  String jobPostingContent) {
         String base = buildSystemPrompt(session, documents, jobPostingContent, null);
+
+        String summary = session.getConversationSummary();
+        if (summary != null && !summary.isBlank()) {
+            base += "\n=== 이전 대화 요약 ===\n" + summary + "\n";
+        }
+
         return base + "\n다음 면접 질문만 텍스트로 답변해주세요. JSON 형식 불필요.";
     }
 
