@@ -19,4 +19,6 @@ public interface InterviewMessageRepository extends JpaRepository<InterviewMessa
     void deleteAllBySessionIdIn(List<Long> sessionIds);
 
     Optional<InterviewMessage> findTopBySessionIdAndRoleOrderByCreatedAtDesc(Long sessionId, MessageRole role);
+
+    boolean existsBySessionIdAndSuggestFinishTrue(Long sessionId);
 }

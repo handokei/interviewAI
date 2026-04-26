@@ -1609,6 +1609,8 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findTopBySessionIdAndRoleOrderByCreatedAtDesc(
                 sessionId, MessageRole.AI))
                 .willReturn(Optional.of(latestAiMessage));
+        given(interviewMessageRepository.existsBySessionIdAndSuggestFinishTrue(sessionId))
+                .willReturn(true);
 
         // when
         InterviewMessageEvalResponseDto result = interviewService.getLatestEvaluation(userId, sessionId);

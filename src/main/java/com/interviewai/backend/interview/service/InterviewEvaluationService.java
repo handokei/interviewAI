@@ -71,7 +71,10 @@ public class InterviewEvaluationService {
                   "qualityHint": "시간복잡도 설명은 좋았으나 공간복잡도 언급이 부족했어요."
                 }
 
-                - suggestFinish: 주요 기술 주제가 충분히 다루어졌으면 true, 아직 부족하면 false
+                - suggestFinish: 다음 중 하나라도 해당하면 true, 아니면 false
+                  * 주요 기술 주제가 충분히 다루어졌을 때
+                  * 면접관이 마무리 발언을 했을 때 (예: "면접을 마무리하겠습니다", "수고하셨습니다")
+                  * 지원자가 면접 종료를 요청했을 때 (예: "그만하고 싶다", "종료하고 싶다")
                 - answerLevel: 지원자 마지막 답변 수준 (반드시 다음 중 하나만 사용)
                   * PASS: 핵심 개념을 정확히 이해하고 설명할 수 있음
                   * NEEDS_IMPROVEMENT: 기본 개념은 알지만 중요한 부분이 빠짐
