@@ -10,7 +10,7 @@
       "title": "Client Call Duration (avg)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
           "expr": "client_call_duration_seconds_sum / client_call_duration_seconds_count",
@@ -27,30 +27,10 @@
       }
     },
     {
-      "title": "Client Call Total Count",
-      "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
-      "targets": [
-        {
-          "expr": "client_call_duration_seconds_count",
-          "legendFormat": "{{class}}.{{method}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 50, "spanNulls": true }
-        },
-        "overrides": []
-      }
-    },
-    {
       "title": "Client Call Duration (max)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
           "expr": "client_call_duration_seconds_max",
@@ -67,10 +47,30 @@
       }
     },
     {
+      "title": "Client Call Total Count",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "client_call_duration_seconds_count",
+          "legendFormat": "{{class}}.{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 50, "spanNulls": true }
+        },
+        "overrides": []
+      }
+    },
+    {
       "title": "Client Call Summary",
       "type": "table",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
           "expr": "client_call_duration_seconds_sum / client_call_duration_seconds_count",
@@ -91,10 +91,81 @@
       "transformations": [
         { "id": "organize", "options": { "includeByName": { "class": true, "method": true, "Value": true } } }
       ]
+    },
+    {
+      "title": "History Message Count (Original vs Trimmed)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "interview_history_original_count",
+          "legendFormat": "Original ({{method}})",
+          "refId": "A"
+        },
+        {
+          "expr": "interview_history_trimmed_count",
+          "legendFormat": "Trimmed ({{method}})",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Estimated Token Usage",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "interview_history_estimated_tokens",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 6000 },
+              { "color": "red", "value": 8000 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "History Trimming Count",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "interview_history_trimmed_total",
+          "legendFormat": "Trimmed",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
     }
   ],
   "schemaVersion": 39,
-  "tags": ["performance", "client"],
+  "tags": ["performance", "client", "context-window"],
   "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
   "title": "InterviewAI - Client Performance",

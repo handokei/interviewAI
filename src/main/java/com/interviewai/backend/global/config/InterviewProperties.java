@@ -19,6 +19,10 @@ public class InterviewProperties {
     public static class Prompt {
         private int maxDocumentLength = 1500;
         private int maxJobPostingLength = 1500;
+        private int maxHistoryTokens = 8000;
+        private int maxEvalHistoryTokens = 4000;
+        private int maxFeedbackTokens = 30000;
+        private int charsPerToken = 3;
     }
 
     @Getter

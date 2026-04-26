@@ -59,6 +59,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final JobCrawlerClient jobCrawlerClient;
     private final InterviewMessageSaver interviewMessageSaver;
     private final InterviewEvaluationService interviewEvaluationService;
+    private final TokenEstimator tokenEstimator;
     private final InterviewProperties interviewProperties;
 
     @Override
@@ -171,11 +172,8 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = priorMessages.stream()
-                .map(msg -> new ChatMessage(
-                        msg.getRole() == MessageRole.AI ? "assistant" : "user",
-                        msg.getContent()))
-                .toList();
+        List<ChatMessage> history = tokenEstimator.trimHistoryWithPriority(
+                priorMessages, interviewProperties.getPrompt().getMaxHistoryTokens());
 
         interviewMessageRepository.save(InterviewMessage.builder()
                 .session(session)
@@ -217,11 +215,8 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         List<InterviewMessage> priorMessages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-        List<ChatMessage> history = priorMessages.stream()
-                .map(msg -> new ChatMessage(
-                        msg.getRole() == MessageRole.AI ? "assistant" : "user",
-                        msg.getContent()))
-                .toList();
+        List<ChatMessage> history = tokenEstimator.trimHistoryWithPriority(
+                priorMessages, interviewProperties.getPrompt().getMaxHistoryTokens());
 
         interviewMessageSaver.saveUserMessage(sessionId, request.getContent());
 
@@ -276,6 +271,16 @@ public class InterviewServiceImpl implements InterviewService {
 
         List<InterviewMessage> messages = interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
         String conversationText = buildConversationText(messages);
+
+        int estimatedTokens = tokenEstimator.estimateTokens(conversationText);
+        int maxFeedbackTokens = interviewProperties.getPrompt().getMaxFeedbackTokens();
+        if (estimatedTokens > maxFeedbackTokens) {
+            log.warn("피드백 대화가 {}토큰으로 제한({}토큰) 초과, 최근 기준으로 잘라냅니다",
+                    estimatedTokens, maxFeedbackTokens);
+            List<ChatMessage> trimmed = tokenEstimator.trimHistory(
+                    tokenEstimator.toChatMessages(messages), maxFeedbackTokens);
+            conversationText = buildTrimmedConversationText(trimmed);
+        }
 
         String feedbackSystemPrompt = buildFeedbackSystemPrompt(session);
         String feedbackJson = claudeAiClient.generateFeedback(feedbackSystemPrompt, conversationText);
@@ -479,6 +484,16 @@ public class InterviewServiceImpl implements InterviewService {
             String roleLabel = message.getRole() == MessageRole.AI ? "면접관" : "지원자";
             sb.append("[").append(roleLabel).append("]\n");
             sb.append(message.getContent()).append("\n\n");
+        }
+        return sb.toString();
+    }
+
+    private String buildTrimmedConversationText(List<ChatMessage> messages) {
+        StringBuilder sb = new StringBuilder("=== 면접 대화 내용 ===\n\n");
+        for (ChatMessage message : messages) {
+            String roleLabel = "assistant".equals(message.role()) ? "면접관" : "지원자";
+            sb.append("[").append(roleLabel).append("]\n");
+            sb.append(message.content()).append("\n\n");
         }
         return sb.toString();
     }

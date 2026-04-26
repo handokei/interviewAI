@@ -68,6 +68,10 @@ interview:
   prompt:
     max-document-length: 1500
     max-job-posting-length: 1500
+    max-history-tokens: 8000
+    max-eval-history-tokens: 4000
+    max-feedback-tokens: 30000
+    chars-per-token: 3
   sse:
     timeout-ms: 120000
 

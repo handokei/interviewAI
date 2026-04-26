@@ -2,6 +2,7 @@ package com.interviewai.backend.interview.service;
 
 import com.interviewai.backend.client.ClaudeAiClient;
 import com.interviewai.backend.client.dto.ChatMessage;
+import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.interview.enums.AnswerLevel;
 import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.model.InterviewMessage;
@@ -22,6 +23,8 @@ public class InterviewEvaluationService {
 
     private final InterviewMessageRepository interviewMessageRepository;
     private final ClaudeAiClient claudeAiClient;
+    private final TokenEstimator tokenEstimator;
+    private final InterviewProperties interviewProperties;
 
     @Async("evalExecutor")
     @Transactional
@@ -48,6 +51,9 @@ public class InterviewEvaluationService {
     }
 
     private String buildEvalPrompt(InterviewSession session, List<ChatMessage> history, String aiResponse) {
+        List<ChatMessage> trimmedHistory = tokenEstimator.trimHistory(
+                history, interviewProperties.getPrompt().getMaxEvalHistoryTokens());
+
         StringBuilder prompt = new StringBuilder();
         String levelDesc = session.getLevel() == InterviewLevel.JUNIOR ? "신입 개발자" : "경력 개발자";
 
@@ -58,7 +64,7 @@ public class InterviewEvaluationService {
             prompt.append("지원 직무: ").append(session.getJobTitle()).append("\n");
         }
         prompt.append("\n=== 면접 대화 ===\n");
-        for (ChatMessage msg : history) {
+        for (ChatMessage msg : trimmedHistory) {
             String role = "assistant".equals(msg.role()) ? "[면접관]" : "[지원자]";
             prompt.append(role).append("\n").append(msg.content()).append("\n\n");
         }
