@@ -72,6 +72,8 @@ interview:
     max-eval-history-tokens: 4000
     max-feedback-tokens: 30000
     chars-per-token: 3
+    max-summary-tokens: 500
+    summary-enabled: true
   sse:
     timeout-ms: 120000
 
