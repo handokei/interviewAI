@@ -99,6 +99,9 @@ class InterviewServiceImplTest {
     private InterviewEvaluationService interviewEvaluationService;
 
     @Mock
+    private ConversationSummaryService conversationSummaryService;
+
+    @Mock
     private TokenEstimator tokenEstimator;
 
     @Mock
@@ -130,6 +133,16 @@ class InterviewServiceImplTest {
                                     msg.getRole() == com.interviewai.backend.interview.enums.MessageRole.AI ? "assistant" : "user",
                                     msg.getContent()))
                             .toList();
+                });
+        lenient().when(tokenEstimator.trimHistoryWithPriorityAndReport(any(), anyInt()))
+                .thenAnswer(inv -> {
+                    List<InterviewMessage> msgs = inv.getArgument(0);
+                    List<com.interviewai.backend.client.dto.ChatMessage> retained = msgs.stream()
+                            .map(msg -> new com.interviewai.backend.client.dto.ChatMessage(
+                                    msg.getRole() == com.interviewai.backend.interview.enums.MessageRole.AI ? "assistant" : "user",
+                                    msg.getContent()))
+                            .toList();
+                    return new TrimResult(retained, List.of(), false);
                 });
         lenient().when(tokenEstimator.trimHistory(any(), anyInt()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -1756,6 +1769,805 @@ class InterviewServiceImplTest {
         assertThatThrownBy(() -> interviewService.getLatestEvaluation(userId, sessionId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("메시지");
+    }
+
+    // ----------------------------------------------------------------
+    // 커버리지 보완 테스트
+    // ----------------------------------------------------------------
+
+    @Test
+    @DisplayName("예외_테스트_startInterview_사용자가_없으면_예외가_발생한다")
+    void 예외_테스트_startInterview_사용자가_없으면_예외가_발생한다() {
+        // given
+        Long userId = 999L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+
+        given(userRepository.findById(userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.startInterview(userId, request))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_finishInterview_세션이_존재하지_않으면_예외가_발생한다")
+    void 예외_테스트_finishInterview_세션이_존재하지_않으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.finishInterview(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_findSessionMessages_메시지_목록을_반환한다")
+    void 기능_테스트_findSessionMessages_메시지_목록을_반환한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        InterviewMessage msg1 = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+        InterviewMessage msg2 = InterviewMessage.builder()
+                .session(session).role(MessageRole.USER).content("답변입니다.").build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .willReturn(List.of(msg1, msg2));
+
+        // when
+        List<InterviewMessageResponseDto> result = interviewService.findSessionMessages(userId, sessionId);
+
+        // then
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getContent()).isEqualTo("질문입니다.");
+        assertThat(result.get(1).getContent()).isEqualTo("답변입니다.");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_findSessionMessages_세션이_존재하지_않으면_예외가_발생한다")
+    void 예외_테스트_findSessionMessages_세션이_존재하지_않으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.findSessionMessages(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_findFeedback_세션이_존재하지_않으면_예외가_발생한다")
+    void 예외_테스트_findFeedback_세션이_존재하지_않으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 999L;
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.findFeedback(userId, sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("면접 세션");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_findFeedback_피드백을_정상_조회한다")
+    void 기능_테스트_findFeedback_피드백을_정상_조회한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        InterviewFeedback feedback = InterviewFeedback.builder()
+                .session(session)
+                .overallLevel(AnswerLevel.PASS)
+                .strengths("잘했습니다.")
+                .improvements("없습니다.")
+                .fullReport("훌륭합니다.")
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId))
+                .willReturn(Optional.of(session));
+        given(interviewFeedbackRepository.findBySessionId(sessionId))
+                .willReturn(Optional.of(feedback));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.findFeedback(userId, sessionId);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_validateModeRequirements_COMPANY_모드에서_문서와_github_없으면_예외가_발생한다")
+    void 예외_테스트_validateModeRequirements_COMPANY_모드에서_문서와_github_없으면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        // documentIds null, githubUrl null
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.startInterview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("문서");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_CAREER_STATEMENT_문서_타입이_포함된다")
+    void 기능_테스트_startInterview_CAREER_STATEMENT_문서_타입이_포함된다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+
+        UserDocument careerDoc = mock(UserDocument.class);
+        when(careerDoc.getDocumentType()).thenReturn(DocumentType.CAREER_STATEMENT);
+        when(careerDoc.getParsedText()).thenReturn("경력기술서 내용입니다.");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(careerDoc));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).contains("=== 지원자 경력기술서 ===");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_문서_parsedText가_null이면_프롬프트에_포함되지_않는다")
+    void 기능_테스트_startInterview_문서_parsedText가_null이면_프롬프트에_포함되지_않는다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+
+        // parsedText=null → getDocumentType()은 호출되지 않으므로 stub 불필요
+        UserDocument doc = mock(UserDocument.class);
+        when(doc.getParsedText()).thenReturn(null);
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(doc));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).doesNotContain("=== 지원자 이력서 ===");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_문서_텍스트_길이_초과시_절삭한다")
+    void 기능_테스트_startInterview_문서_텍스트_길이_초과시_절삭한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+
+        // maxDocumentLength default is 1500, create text longer than that
+        String longText = "A".repeat(2000);
+        UserDocument doc = mock(UserDocument.class);
+        when(doc.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(doc.getParsedText()).thenReturn(longText);
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(doc));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).contains("...");
+        assertThat(prompt).doesNotContain(longText); // full text not included
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_채용공고_텍스트_길이_초과시_절삭한다")
+    void 기능_테스트_startInterview_채용공고_텍스트_길이_초과시_절삭한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+        setField(request, "jobPostingUrl", "https://jobs.example.com/job");
+
+        String longJobPosting = "B".repeat(2000);
+
+        UserDocument doc = mock(UserDocument.class);
+        when(doc.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(doc.getParsedText()).thenReturn("이력서 내용");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.COMPANY).level(InterviewLevel.JUNIOR)
+                .jobPostingContent(longJobPosting).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(doc));
+        given(jobCrawlerClient.crawl(any())).willReturn(longJobPosting);
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+
+        // when
+        interviewService.startInterview(userId, request);
+
+        // then
+        ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
+        verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
+        String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
+        assertThat(prompt).contains("=== 채용공고 내용 ===");
+        assertThat(prompt).contains("...");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_토큰_초과시_buildTrimmedConversationText로_AI와_지원자_역할이_포함된다")
+    void 기능_테스트_finishInterview_토큰_초과시_buildTrimmedConversationText로_AI와_지원자_역할이_포함된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        lenient().when(tokenEstimator.estimateTokens(anyString())).thenReturn(50000);
+
+        // toChatMessages returns trimmed messages including assistant and user roles
+        List<com.interviewai.backend.client.dto.ChatMessage> trimmedMessages = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "면접관 질문"),
+                new com.interviewai.backend.client.dto.ChatMessage("user", "지원자 답변")
+        );
+        lenient().when(tokenEstimator.toChatMessages(any())).thenReturn(trimmedMessages);
+        lenient().when(tokenEstimator.trimHistory(any(), anyInt())).thenReturn(trimmedMessages);
+
+        ArgumentCaptor<String> conversationCaptor = ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.generateFeedback(any(), conversationCaptor.capture()))
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"좋음\",\"improvements\":\"없음\",\"fullReport\":\"리포트\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(inv -> inv.getArgument(0));
+
+        // when
+        interviewService.finishInterview(userId, sessionId);
+
+        // then
+        String capturedConversation = conversationCaptor.getValue();
+        assertThat(capturedConversation).contains("[면접관]");
+        assertThat(capturedConversation).contains("면접관 질문");
+        assertThat(capturedConversation).contains("[지원자]");
+        assertThat(capturedConversation).contains("지원자 답변");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_parseFeedbackAndSave_JSON_예외시_catch_블록을_거친다")
+    void 기능_테스트_finishInterview_parseFeedbackAndSave_JSON_예외시_catch_블록을_거친다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        // Return JSON with { but malformed inside to trigger readTree exception
+        given(claudeAiClient.generateFeedback(any(), any())).willReturn("{invalid json:}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(inv -> inv.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then — falls back to default values
+        assertThat(result).isNotNull();
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_joinSafely_예외시_graceful_degradation으로_null을_반환한다")
+    void 기능_테스트_startInterview_joinSafely_예외시_graceful_degradation으로_null을_반환한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of(1L));
+        setField(request, "jobPostingUrl", "https://jobs.example.com/job");
+
+        UserDocument doc = mock(UserDocument.class);
+        when(doc.getDocumentType()).thenReturn(DocumentType.RESUME);
+        when(doc.getParsedText()).thenReturn("이력서 내용");
+
+        // crawl throws exception → joinSafely catches it → returns null
+        given(jobCrawlerClient.crawl(any())).willThrow(new RuntimeException("크롤 실패"));
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.COMPANY).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(userDocumentRepository.findAllByIdInAndUserId(List.of(1L), userId)).willReturn(List.of(doc));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+        given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
+
+        // when — should not throw, graceful degradation
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_documentIds가_빈_리스트이면_문서를_조회하지_않는다")
+    void 기능_테스트_startInterview_documentIds가_빈_리스트이면_문서를_조회하지_않는다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of()); // empty list
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(userDocumentRepository, org.mockito.Mockito.never()).findAllByIdInAndUserId(any(), any());
+    }
+
+    @Test
+    @DisplayName("예외_테스트_validateModeRequirements_RESUME_모드에서_빈_documentIds이면_예외가_발생한다")
+    void 예외_테스트_validateModeRequirements_RESUME_모드에서_빈_documentIds이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.RESUME);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of()); // empty list, not null
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.startInterview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("문서");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_buildSendMessageSystemPrompt_요약이_blank이면_시스템프롬프트에_미포함된다")
+    void 기능_테스트_buildSendMessageSystemPrompt_요약이_blank이면_시스템프롬프트에_미포함된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+        session.setConversationSummary("   "); // blank summary
+
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of();
+        TrimResult noTrimResult = new TrimResult(retainedList, List.of(), false);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        org.mockito.Mockito.doReturn(noTrimResult)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(systemPromptCaptor.capture(), any(), any())).willReturn("AI 응답");
+
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(302L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        assertThat(systemPromptCaptor.getValue()).doesNotContain("=== 이전 대화 요약 ===");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_parseFeedbackAndSave_JSON_필드_없을때_기본값을_사용한다")
+    void 기능_테스트_finishInterview_parseFeedbackAndSave_JSON_필드_없을때_기본값을_사용한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        // JSON with no overallLevel, strengths, improvements, fullReport fields
+        given(claudeAiClient.generateFeedback(any(), any())).willReturn("{}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(inv -> inv.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(result.getStrengths()).isEqualTo("분석 중...");
+        assertThat(result.getImprovements()).isEqualTo("분석 중...");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_validateModeRequirements_COMPANY_모드에서_빈_documentIds이면_예외가_발생한다")
+    void 예외_테스트_validateModeRequirements_COMPANY_모드에서_빈_documentIds이면_예외가_발생한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.COMPANY);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "documentIds", List.of()); // empty, not null
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+
+        // when & then
+        assertThatThrownBy(() -> interviewService.startInterview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("문서");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_summaryDisabled이면_요약생성을_호출하지않는다")
+    void 기능_테스트_streamMessage_summaryDisabled이면_요약생성을_호출하지않는다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        InterviewMessage priorMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+
+        List<InterviewMessage> trimmedList = List.of(priorMsg);
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "질문입니다."));
+        TrimResult trimResultWithTrimming = new TrimResult(retainedList, trimmedList, true);
+
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        prompt.setSummaryEnabled(false);
+        given(interviewProperties.getPrompt()).willReturn(prompt);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of(priorMsg));
+        org.mockito.Mockito.doReturn(trimResultWithTrimming)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        lenient().when(claudeAiClient.streamChat(any(), any(), any()))
+                .thenReturn(reactor.core.publisher.Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        verify(conversationSummaryService, org.mockito.Mockito.never()).generateSummaryAsync(any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // sendMessage + trimming/summary 테스트
+    // ----------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_sendMessage_trimming발생시_요약생성을_비동기호출한다")
+    void 기능_테스트_sendMessage_trimming발생시_요약생성을_비동기호출한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage priorMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+        List<InterviewMessage> priorMessages = List.of(priorMsg);
+
+        List<InterviewMessage> trimmedList = List.of(priorMsg);
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "질문입니다."));
+        TrimResult trimResultWithTrimming = new TrimResult(retainedList, trimmedList, true);
+
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        prompt.setSummaryEnabled(true);
+        given(interviewProperties.getPrompt()).willReturn(prompt);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(priorMessages);
+        org.mockito.Mockito.doReturn(trimResultWithTrimming)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("AI 응답");
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(200L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        verify(conversationSummaryService).generateSummaryAsync(eq(sessionId), eq(trimmedList));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_sendMessage_trimming미발생시_요약생성을_호출하지않는다")
+    void 기능_테스트_sendMessage_trimming미발생시_요약생성을_호출하지않는다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage priorMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+        List<InterviewMessage> priorMessages = List.of(priorMsg);
+
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "질문입니다."));
+        TrimResult noTrimResult = new TrimResult(retainedList, List.of(), false);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(priorMessages);
+        org.mockito.Mockito.doReturn(noTrimResult)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("AI 응답");
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(200L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        verify(conversationSummaryService, org.mockito.Mockito.never())
+                .generateSummaryAsync(any(), any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_sendMessage_summaryDisabled이면_요약생성을_호출하지않는다")
+    void 기능_테스트_sendMessage_summaryDisabled이면_요약생성을_호출하지않는다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage priorMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+        List<InterviewMessage> priorMessages = List.of(priorMsg);
+
+        List<InterviewMessage> trimmedList = List.of(priorMsg);
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "질문입니다."));
+        TrimResult trimResultWithTrimming = new TrimResult(retainedList, trimmedList, true);
+
+        // summaryEnabled = false
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        prompt.setSummaryEnabled(false);
+        given(interviewProperties.getPrompt()).willReturn(prompt);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(priorMessages);
+        org.mockito.Mockito.doReturn(trimResultWithTrimming)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        given(claudeAiClient.chat(any(), any(), any())).willReturn("AI 응답");
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(200L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        verify(conversationSummaryService, org.mockito.Mockito.never())
+                .generateSummaryAsync(any(), any());
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamMessage_trimming발생시_요약생성을_비동기호출한다")
+    void 기능_테스트_streamMessage_trimming발생시_요약생성을_비동기호출한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        InterviewMessage priorMsg = InterviewMessage.builder()
+                .session(session).role(MessageRole.AI).content("질문입니다.").build();
+        List<InterviewMessage> priorMessages = List.of(priorMsg);
+
+        List<InterviewMessage> trimmedList = List.of(priorMsg);
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "질문입니다."));
+        TrimResult trimResultWithTrimming = new TrimResult(retainedList, trimmedList, true);
+
+        InterviewProperties.Prompt prompt = new InterviewProperties.Prompt();
+        prompt.setSummaryEnabled(true);
+        given(interviewProperties.getPrompt()).willReturn(prompt);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(priorMessages);
+        org.mockito.Mockito.doReturn(trimResultWithTrimming)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        lenient().when(claudeAiClient.streamChat(any(), any(), any()))
+                .thenReturn(reactor.core.publisher.Flux.just("토큰"));
+
+        // when
+        interviewService.streamMessage(userId, sessionId, request);
+
+        // then
+        verify(conversationSummaryService).generateSummaryAsync(eq(sessionId), eq(trimmedList));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_buildSendMessageSystemPrompt_요약이있으면_시스템프롬프트에_포함된다")
+    void 기능_테스트_buildSendMessageSystemPrompt_요약이있으면_시스템프롬프트에_포함된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.setConversationSummary("이전 면접에서 Java 기초를 다뤘습니다.");
+
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of();
+        TrimResult noTrimResult = new TrimResult(retainedList, List.of(), false);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        org.mockito.Mockito.doReturn(noTrimResult)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(systemPromptCaptor.capture(), any(), any())).willReturn("AI 응답");
+
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(300L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        String capturedPrompt = systemPromptCaptor.getValue();
+        assertThat(capturedPrompt).contains("=== 이전 대화 요약 ===");
+        assertThat(capturedPrompt).contains("이전 면접에서 Java 기초를 다뤘습니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_buildSendMessageSystemPrompt_요약이없으면_시스템프롬프트에_미포함된다")
+    void 기능_테스트_buildSendMessageSystemPrompt_요약이없으면_시스템프롬프트에_미포함된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+        InterviewSendMessageRequestDto request = new InterviewSendMessageRequestDto();
+        setField(request, "content", "답변입니다.");
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        // conversationSummary is null by default
+
+        List<com.interviewai.backend.client.dto.ChatMessage> retainedList = List.of();
+        TrimResult noTrimResult = new TrimResult(retainedList, List.of(), false);
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        org.mockito.Mockito.doReturn(noTrimResult)
+                .when(tokenEstimator).trimHistoryWithPriorityAndReport(any(), anyInt());
+        given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(systemPromptCaptor.capture(), any(), any())).willReturn("AI 응답");
+
+        InterviewMessage savedAiMsg = mock(InterviewMessage.class);
+        given(savedAiMsg.getId()).willReturn(301L);
+        given(interviewMessageRepository.save(any(InterviewMessage.class))).willReturn(null, savedAiMsg);
+
+        // when
+        interviewService.sendMessage(userId, sessionId, request);
+
+        // then
+        String capturedPrompt = systemPromptCaptor.getValue();
+        assertThat(capturedPrompt).doesNotContain("=== 이전 대화 요약 ===");
     }
 
     private void setField(Object target, String fieldName, Object value) {

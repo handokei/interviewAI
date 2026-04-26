@@ -23,6 +23,8 @@ public class InterviewProperties {
         private int maxEvalHistoryTokens = 4000;
         private int maxFeedbackTokens = 30000;
         private int charsPerToken = 3;
+        private int maxSummaryTokens = 500;
+        private boolean summaryEnabled = true;
     }
 
     @Getter

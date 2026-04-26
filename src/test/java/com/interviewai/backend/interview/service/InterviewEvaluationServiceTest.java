@@ -324,6 +324,101 @@ class InterviewEvaluationServiceTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_buildEvalPrompt_history가_있으면_대화_내용이_프롬프트에_포함된다")
+    void 기능_테스트_buildEvalPrompt_history가_있으면_대화_내용이_프롬프트에_포함된다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        List<ChatMessage> history = List.of(
+                new ChatMessage("assistant", "면접관 질문입니다."),
+                new ChatMessage("user", "지원자 답변입니다.")
+        );
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, history, "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).contains("[면접관]");
+        assertThat(promptCaptor.getValue()).contains("면접관 질문입니다.");
+        assertThat(promptCaptor.getValue()).contains("[지원자]");
+        assertThat(promptCaptor.getValue()).contains("지원자 답변입니다.");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_parseEvaluation_readTree_예외시_catch_블록을_거쳐_fallback을_반환한다")
+    void 기능_테스트_parseEvaluation_readTree_예외시_catch_블록을_거쳐_fallback을_반환한다() {
+        // given — JSON with { and } but content causes readTree to fail
+        String malformedJson = "{this is not valid json at all}";
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.parseEvaluation(malformedJson);
+
+        // then
+        assertThat(eval.suggestFinish()).isFalse();
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(eval.qualityHint()).isEqualTo("답변이 접수되었습니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_buildEvalPrompt_요약이있으면_프롬프트에_포함된다")
+    void 기능_테스트_buildEvalPrompt_요약이있으면_프롬프트에_포함된다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        session.setConversationSummary("이전 면접에서 Java 기초를 다뤘습니다.");
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).contains("=== 이전 대화 요약 (참고용) ===");
+        assertThat(promptCaptor.getValue()).contains("이전 면접에서 Java 기초를 다뤘습니다.");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_buildEvalPrompt_요약이없으면_프롬프트에_미포함된다")
+    void 기능_테스트_buildEvalPrompt_요약이없으면_프롬프트에_미포함된다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+        // conversationSummary is null by default
+
+        org.mockito.ArgumentCaptor<String> promptCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        given(claudeAiClient.chat(promptCaptor.capture(), any(), any()))
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"NEEDS_IMPROVEMENT\",\"qualityHint\":\"힌트\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then
+        assertThat(promptCaptor.getValue()).doesNotContain("=== 이전 대화 요약 (참고용) ===");
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+    }
+
+    @Test
     @DisplayName("기능_테스트_evaluateAsync_AI_성공_후_메시지가_사라지면_catch를_거쳐_fallback이_적용된다")
     void 기능_테스트_evaluateAsync_AI_성공_후_메시지가_사라지면_catch를_거쳐_fallback이_적용된다() {
         // given

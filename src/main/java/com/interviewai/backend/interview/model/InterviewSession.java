@@ -50,6 +50,10 @@ public class InterviewSession {
     @Column(columnDefinition = "TEXT")
     private String systemPrompt;
 
+    @Setter
+    @Column(columnDefinition = "TEXT")
+    private String conversationSummary;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

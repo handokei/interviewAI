@@ -173,6 +173,141 @@ class TokenEstimatorTest {
         assertThat(result.get(1).content()).isEqualTo("답변입니다");
     }
 
+    // ----------------------------------------------------------------
+    // trimHistoryWithPriorityAndReport 테스트
+    // ----------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriorityAndReport_budget충분하면_wasTrimmed가_false이고_trimmed가_비어있다")
+    void 기능_테스트_trimHistoryWithPriorityAndReport_budget충분하면_wasTrimmed가_false이고_trimmed가_비어있다() {
+        InterviewSession session = mock(InterviewSession.class);
+        List<InterviewMessage> messages = List.of(
+                createMessage(session, MessageRole.AI, "aaa", null, 1),
+                createMessage(session, MessageRole.USER, "bbb", AnswerLevel.PASS, 2)
+        );
+
+        TrimResult result = tokenEstimator.trimHistoryWithPriorityAndReport(messages, 10000);
+
+        assertThat(result.wasTrimmed()).isFalse();
+        assertThat(result.trimmed()).isEmpty();
+        assertThat(result.retained()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriorityAndReport_budget초과시_wasTrimmed가_true이고_trimmed에_잘린_메시지가_포함된다")
+    void 기능_테스트_trimHistoryWithPriorityAndReport_budget초과시_wasTrimmed가_true이고_trimmed에_잘린_메시지가_포함된다() {
+        InterviewSession session = mock(InterviewSession.class);
+        List<InterviewMessage> messages = List.of(
+                createMessage(session, MessageRole.AI, "aaa", null, 1),          // 첫 메시지 (1 토큰)
+                createMessage(session, MessageRole.USER, "bbb", AnswerLevel.PASS, 2), // PASS (1 토큰)
+                createMessage(session, MessageRole.AI, "ccc", null, 3),
+                createMessage(session, MessageRole.USER, "ddd", AnswerLevel.PASS, 4)
+        );
+
+        // budget=2: 첫 메시지(1) + 남은 1 → 최근 1개 normal 포함 시도
+        TrimResult result = tokenEstimator.trimHistoryWithPriorityAndReport(messages, 2);
+
+        assertThat(result.wasTrimmed()).isTrue();
+        assertThat(result.trimmed()).isNotEmpty();
+        assertThat(result.retained()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriorityAndReport_빈_메시지이면_빈_결과를_반환한다")
+    void 기능_테스트_trimHistoryWithPriorityAndReport_빈_메시지이면_빈_결과를_반환한다() {
+        TrimResult result = tokenEstimator.trimHistoryWithPriorityAndReport(List.of(), 100);
+
+        assertThat(result.wasTrimmed()).isFalse();
+        assertThat(result.trimmed()).isEmpty();
+        assertThat(result.retained()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriorityAndReport_budget이_첫메시지보다_작으면_나머지가_모두_trimmed에_포함된다")
+    void 기능_테스트_trimHistoryWithPriorityAndReport_budget이_첫메시지보다_작으면_나머지가_모두_trimmed에_포함된다() {
+        InterviewSession session = mock(InterviewSession.class);
+        List<InterviewMessage> messages = List.of(
+                createMessage(session, MessageRole.AI, "abcdefghijklmno", null, 1), // 5 토큰
+                createMessage(session, MessageRole.USER, "bbb", AnswerLevel.PASS, 2),
+                createMessage(session, MessageRole.AI, "ccc", null, 3)
+        );
+
+        // budget=1: 첫 메시지(5토큰) > budget → remainingBudget <= 0
+        TrimResult result = tokenEstimator.trimHistoryWithPriorityAndReport(messages, 1);
+
+        assertThat(result.wasTrimmed()).isTrue();
+        // 첫 메시지만 retained, 나머지 2개는 trimmed
+        assertThat(result.retained()).hasSize(1);
+        assertThat(result.retained().get(0).content()).isEqualTo("abcdefghijklmno");
+        assertThat(result.trimmed()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistory_budget과_정확히_같은_크기면_전부_반환한다")
+    void 기능_테스트_trimHistory_budget과_정확히_같은_크기면_전부_반환한다() {
+        // charsPerToken=3, so "aaa"=1토큰, "bbb"=1토큰, "ccc"=1토큰 → total 3 tokens
+        List<ChatMessage> history = List.of(
+                new ChatMessage("assistant", "aaa"),
+                new ChatMessage("user", "bbb"),
+                new ChatMessage("assistant", "ccc")
+        );
+        List<ChatMessage> result = tokenEstimator.trimHistory(history, 3);
+        assertThat(result).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistory_첫_메시지만_있을때_budget_초과시_첫_메시지만_반환한다")
+    void 기능_테스트_trimHistory_첫_메시지만_있을때_budget_초과시_첫_메시지만_반환한다() {
+        // only one message, totalTokens > maxTokens
+        // first = history.get(0) → firstTokens=2, remainingBudget=maxTokens-2=-1 ≤ 0
+        // → return List.of(first)
+        List<ChatMessage> history = List.of(
+                new ChatMessage("assistant", "abcdef") // 2 tokens
+        );
+        // budget=1 < firstTokens=2
+        List<ChatMessage> result = tokenEstimator.trimHistory(history, 1);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).content()).isEqualTo("abcdef");
+    }
+
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriorityAndReport_STUDY_REQUIRED가_budget을_넘으면_normal도_일부만_포함된다")
+    void 기능_테스트_trimHistoryWithPriorityAndReport_STUDY_REQUIRED가_budget을_넘으면_normal도_일부만_포함된다() {
+        InterviewSession session = mock(InterviewSession.class);
+        // charsPerToken=3: "aaa"=1토큰, "bbbbbbbbbbbbb"=4토큰(13/3=4), "ccc"=1토큰
+        List<InterviewMessage> messages = List.of(
+                createMessage(session, MessageRole.AI, "aaa", null, 1),                     // first (1 토큰)
+                createMessage(session, MessageRole.USER, "bbbbbbbbbbbbb", AnswerLevel.STUDY_REQUIRED, 2), // 4 토큰 priority
+                createMessage(session, MessageRole.AI, "ccc", null, 3),
+                createMessage(session, MessageRole.USER, "ddd", AnswerLevel.PASS, 4)
+        );
+        // budget=3: first(1) + remaining=2 → STUDY_REQUIRED(4) > 2 → break from priority loop
+        // normal messages added from end: "ddd"(1) ≤ 2 → include; "ccc"(1) ≤ 1 → include
+        TrimResult result = tokenEstimator.trimHistoryWithPriorityAndReport(messages, 3);
+
+        assertThat(result.wasTrimmed()).isTrue();
+        // STUDY_REQUIRED가 budget을 초과하여 포함되지 않음
+        assertThat(result.retained().stream().noneMatch(m -> m.content().equals("bbbbbbbbbbbbb"))).isTrue();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_trimHistoryWithPriority가_trimHistoryWithPriorityAndReport의_retained를_반환한다")
+    void 기능_테스트_trimHistoryWithPriority가_trimHistoryWithPriorityAndReport의_retained를_반환한다() {
+        InterviewSession session = mock(InterviewSession.class);
+        List<InterviewMessage> messages = List.of(
+                createMessage(session, MessageRole.AI, "aaa", null, 1),
+                createMessage(session, MessageRole.USER, "bbb", AnswerLevel.PASS, 2)
+        );
+
+        List<com.interviewai.backend.client.dto.ChatMessage> retained =
+                tokenEstimator.trimHistoryWithPriority(messages, 10000);
+        TrimResult report =
+                tokenEstimator.trimHistoryWithPriorityAndReport(messages, 10000);
+
+        assertThat(retained).isEqualTo(report.retained());
+    }
+
     private InterviewMessage createMessage(InterviewSession session, MessageRole role,
                                            String content, AnswerLevel answerLevel, int minuteOffset) {
         InterviewMessage msg = InterviewMessage.builder()
