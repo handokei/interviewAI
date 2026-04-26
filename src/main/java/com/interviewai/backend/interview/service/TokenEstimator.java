@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -76,18 +78,25 @@ public class TokenEstimator {
     }
 
     public List<ChatMessage> trimHistoryWithPriority(List<InterviewMessage> messages, int maxTokens) {
-        if (messages.isEmpty()) return List.of();
+        return trimHistoryWithPriorityAndReport(messages, maxTokens).retained();
+    }
+
+    public TrimResult trimHistoryWithPriorityAndReport(List<InterviewMessage> messages, int maxTokens) {
+        if (messages.isEmpty()) return new TrimResult(List.of(), List.of(), false);
 
         int totalTokens = messages.stream()
                 .mapToInt(m -> estimateTokens(m.getContent()))
                 .sum();
-        if (totalTokens <= maxTokens) return toChatMessages(messages);
+        if (totalTokens <= maxTokens) return new TrimResult(toChatMessages(messages), List.of(), false);
 
         InterviewMessage first = messages.get(0);
         int firstTokens = estimateTokens(first.getContent());
         int remainingBudget = maxTokens - firstTokens;
 
-        if (remainingBudget <= 0) return toChatMessages(List.of(first));
+        if (remainingBudget <= 0) {
+            List<InterviewMessage> trimmedMessages = messages.subList(1, messages.size());
+            return new TrimResult(toChatMessages(List.of(first)), List.copyOf(trimmedMessages), true);
+        }
 
         List<InterviewMessage> rest = messages.subList(1, messages.size());
 
@@ -124,13 +133,18 @@ public class TokenEstimator {
         result.add(first);
         result.addAll(included);
 
+        Set<InterviewMessage> retainedSet = new HashSet<>(result);
+        List<InterviewMessage> trimmedMessages = messages.stream()
+                .filter(m -> !retainedSet.contains(m))
+                .toList();
+
         long priorityKept = priority.stream().filter(included::contains).count();
         trimCounter.increment();
         int trimmedTokens = result.stream().mapToInt(m -> estimateTokens(m.getContent())).sum();
         recordMetrics("trimHistoryWithPriority", messages.size(), result.size(), trimmedTokens);
-        log.debug("중요도 기반 trimming: {} → {} 메시지 (STUDY_REQUIRED {} 보존)",
-                messages.size(), result.size(), priorityKept);
-        return toChatMessages(result);
+        log.debug("중요도 기반 trimming: {} → {} 메시지 (STUDY_REQUIRED {} 보존, {} 메시지 요약 대상)",
+                messages.size(), result.size(), priorityKept, trimmedMessages.size());
+        return new TrimResult(toChatMessages(result), trimmedMessages, true);
     }
 
     public List<ChatMessage> toChatMessages(List<InterviewMessage> messages) {
