@@ -2,6 +2,7 @@ HELP.md
 .gradle
 .claude/.review-passed
 build/
+bin/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/

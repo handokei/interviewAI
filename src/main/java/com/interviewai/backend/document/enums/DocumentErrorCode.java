@@ -12,7 +12,8 @@ public enum DocumentErrorCode implements ErrorCode {
     DOCUMENT_NOT_FOUND("D001", "문서를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     UNSUPPORTED_FILE_TYPE("D002", "지원하지 않는 파일 형식입니다. PDF 파일만 허용됩니다.", HttpStatus.BAD_REQUEST),
     FILE_UPLOAD_FAILED("D003", "파일 업로드에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
-    FILE_PARSE_FAILED("D004", "파일 파싱에 실패했습니다.", HttpStatus.BAD_REQUEST);
+    FILE_PARSE_FAILED("D004", "파일 파싱에 실패했습니다.", HttpStatus.BAD_REQUEST),
+    IMAGE_PDF_NOT_SUPPORTED("D005", "이미지 기반 PDF는 텍스트 추출이 불가합니다. 텍스트 기반 PDF를 업로드해주세요.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

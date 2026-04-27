@@ -10,6 +10,7 @@ import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.user.enums.UserErrorCode;
 import com.interviewai.backend.user.model.User;
+import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final UserDocumentRepository userDocumentRepository;
     private final UserRepository userRepository;
     private final PdfParserClient pdfParserClient;
+    private final InterviewProperties interviewProperties;
 
     @Override
     @Transactional
@@ -46,6 +48,10 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException(DocumentErrorCode.FILE_PARSE_FAILED);
         }
 
+        if (parsedText.length() < 50) {
+            throw new BusinessException(DocumentErrorCode.IMAGE_PDF_NOT_SUPPORTED);
+        }
+
         UserDocument document = UserDocument.builder()
                 .user(user)
                 .documentType(documentType)
@@ -53,7 +59,10 @@ public class DocumentServiceImpl implements DocumentService {
                 .parsedText(parsedText)
                 .build();
 
-        return DocumentUploadResponseDto.from(userDocumentRepository.save(document));
+        return DocumentUploadResponseDto.from(
+                userDocumentRepository.save(document),
+                interviewProperties.getPrompt().getMaxDocumentLength()
+        );
     }
 
     @Override
