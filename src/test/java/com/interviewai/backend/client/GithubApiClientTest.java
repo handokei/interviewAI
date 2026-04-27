@@ -40,6 +40,8 @@ class GithubApiClientTest {
     void setUp() {
         lenient().when(githubApiProperties.getMaxRepos()).thenReturn(10);
         lenient().when(githubApiProperties.getMaxReadmeLength()).thenReturn(500);
+        lenient().when(githubApiProperties.getMaxLanguages()).thenReturn(5);
+        lenient().when(githubApiProperties.getParallelTimeoutSeconds()).thenReturn(30);
         githubApiClient = new GithubApiClient(githubApiProperties, restClient);
     }
 
@@ -419,9 +421,98 @@ class GithubApiClientTest {
     @Test
     @DisplayName("기능_테스트_github_com이_마지막_토큰인_URL이면_사용자명_추출_불가_메시지가_반환된다")
     void 기능_테스트_github_com이_마지막_토큰인_URL이면_사용자명_추출_불가_메시지가_반환된다() {
-        // URL like "https://github.com" — github.com is at parts[2], parts[3] doesn't exist
         String result = githubApiClient.extractGithubInfo("https://github.com");
 
         assertThat(result).contains("사용자명을 추출할 수 없습니다");
+    }
+
+    // -----------------------------------------------------------------------
+    // fetchLanguages 단위 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_언어_비율이_정상_반환된다")
+    void 기능_테스트_언어_비율이_정상_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("Java", 50000, "Kotlin", 3000));
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+
+        assertThat(result).containsEntry("Java", 50000L);
+        assertThat(result).containsEntry("Kotlin", 3000L);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_API_실패시_빈_맵이_반환된다")
+    void 기능_테스트_언어_API_실패시_빈_맵이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("API 실패"));
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_API가_null_반환시_빈_맵이_반환된다")
+    void 기능_테스트_언어_API가_null_반환시_빈_맵이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+
+        assertThat(result).isEmpty();
+    }
+
+    // -----------------------------------------------------------------------
+    // 통합 테스트 — 언어, 토픽, 최근 활동 포함
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다")
+    void 기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User", "bio", "Developer", "public_repos", 1);
+
+        Map<String, Object> repo = new java.util.HashMap<>();
+        repo.put("name", "my-project");
+        repo.put("description", "Spring Boot 프로젝트");
+        repo.put("stargazers_count", 5);
+        repo.put("fork", true);
+        repo.put("language", "Java");
+        repo.put("pushed_at", "2026-04-25T10:00:00Z");
+
+        // fork=true이므로 README/Language 병렬 호출 없음 → 순차 mock 가능
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of(repo));
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("[Java]");
+        assertThat(result).contains("마지막 활동: 2026-04-25");
+        assertThat(result).contains("설명: Spring Boot 프로젝트");
     }
 }

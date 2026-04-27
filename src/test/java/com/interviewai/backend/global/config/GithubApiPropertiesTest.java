@@ -16,6 +16,8 @@ class GithubApiPropertiesTest {
         assertThat(properties.getBaseUrl()).isEqualTo("https://api.github.com");
         assertThat(properties.getMaxRepos()).isEqualTo(10);
         assertThat(properties.getMaxReadmeLength()).isEqualTo(500);
+        assertThat(properties.getMaxLanguages()).isEqualTo(5);
+        assertThat(properties.getParallelTimeoutSeconds()).isEqualTo(30);
     }
 
     @Test
@@ -25,9 +27,13 @@ class GithubApiPropertiesTest {
         properties.setBaseUrl("https://api.github.enterprise.com");
         properties.setMaxRepos(20);
         properties.setMaxReadmeLength(1000);
+        properties.setMaxLanguages(10);
+        properties.setParallelTimeoutSeconds(60);
 
         assertThat(properties.getBaseUrl()).isEqualTo("https://api.github.enterprise.com");
         assertThat(properties.getMaxRepos()).isEqualTo(20);
         assertThat(properties.getMaxReadmeLength()).isEqualTo(1000);
+        assertThat(properties.getMaxLanguages()).isEqualTo(10);
+        assertThat(properties.getParallelTimeoutSeconds()).isEqualTo(60);
     }
 }
