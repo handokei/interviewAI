@@ -127,6 +127,8 @@ class InterviewServiceImplTest {
         InterviewProperties.Sse sse = new InterviewProperties.Sse();
         lenient().when(interviewProperties.getPrompt()).thenReturn(prompt);
         lenient().when(interviewProperties.getSse()).thenReturn(sse);
+        lenient().when(interviewProperties.getCrawlTimeoutSeconds()).thenReturn(15);
+        lenient().when(interviewProperties.getGithubTimeoutSeconds()).thenReturn(30);
 
         lenient().when(tokenEstimator.trimHistoryWithPriority(any(), anyInt()))
                 .thenAnswer(inv -> {
