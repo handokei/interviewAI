@@ -482,6 +482,124 @@ class GithubApiClientTest {
     // 통합 테스트 — 언어, 토픽, 최근 활동 포함
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // appendTopics / appendLanguageBreakdown / appendTechStackSummary / mergeLanguages / formatDate 단위 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_있으면_결과에_포함된다")
+    void 기능_테스트_토픽이_있으면_결과에_포함된다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = new java.util.HashMap<>();
+        repo.put("topics", List.of("spring-boot", "docker", "kubernetes"));
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).contains("토픽: spring-boot, docker, kubernetes");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_없으면_결과에_추가되지_않는다")
+    void 기능_테스트_토픽이_없으면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = new java.util.HashMap<>();
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_빈_리스트이면_결과에_추가되지_않는다")
+    void 기능_테스트_토픽이_빈_리스트이면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = Map.of("topics", List.of());
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_비율이_퍼센트로_표시된다")
+    void 기능_테스트_언어_비율이_퍼센트로_표시된다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Long> languages = new java.util.LinkedHashMap<>();
+        languages.put("Java", 70000L);
+        languages.put("Kotlin", 30000L);
+
+        githubApiClient.appendLanguageBreakdown(result, languages);
+
+        assertThat(result.toString()).contains("언어: Java 70%, Kotlin 30%");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_합계가_0이면_결과에_추가되지_않는다")
+    void 기능_테스트_언어_합계가_0이면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Long> languages = Map.of("Java", 0L);
+
+        githubApiClient.appendLanguageBreakdown(result, languages);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_기술스택_요약이_레포_섹션_앞에_삽입된다")
+    void 기능_테스트_기술스택_요약이_레포_섹션_앞에_삽입된다() {
+        StringBuilder result = new StringBuilder("주요 레포지토리:\n- repo1\n");
+        Map<String, Long> totalLanguages = new java.util.LinkedHashMap<>();
+        totalLanguages.put("Java", 80000L);
+        totalLanguages.put("Python", 20000L);
+
+        githubApiClient.appendTechStackSummary(result, totalLanguages);
+
+        String output = result.toString();
+        assertThat(output).contains("주요 기술스택: Java (80%), Python (20%)");
+        assertThat(output.indexOf("주요 기술스택")).isLessThan(output.indexOf("주요 레포지토리"));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_빈_언어_맵이면_기술스택_요약이_추가되지_않는다")
+    void 기능_테스트_빈_언어_맵이면_기술스택_요약이_추가되지_않는다() {
+        StringBuilder result = new StringBuilder("주요 레포지토리:\n");
+        Map<String, Long> empty = Map.of();
+
+        githubApiClient.appendTechStackSummary(result, empty);
+
+        assertThat(result.toString()).doesNotContain("주요 기술스택");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_병합이_정상_동작한다")
+    void 기능_테스트_언어_병합이_정상_동작한다() {
+        Map<String, Long> total = new java.util.LinkedHashMap<>();
+        total.put("Java", 50000L);
+
+        githubApiClient.mergeLanguages(total, Map.of("Java", 30000L, "Kotlin", 10000L));
+
+        assertThat(total).containsEntry("Java", 80000L);
+        assertThat(total).containsEntry("Kotlin", 10000L);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_ISO_날짜가_포맷된다")
+    void 기능_테스트_ISO_날짜가_포맷된다() {
+        assertThat(githubApiClient.formatDate("2026-04-25T10:00:00Z")).isEqualTo("2026-04-25");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_null_날짜는_null_반환한다")
+    void 기능_테스트_null_날짜는_null_반환한다() {
+        assertThat(githubApiClient.formatDate(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_잘못된_날짜는_null_반환한다")
+    void 기능_테스트_잘못된_날짜는_null_반환한다() {
+        assertThat(githubApiClient.formatDate("invalid")).isNull();
+    }
+
     @Test
     @DisplayName("기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다")
     void 기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다() {

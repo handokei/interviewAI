@@ -187,7 +187,7 @@ public class GithubApiClient {
     }
 
     @SuppressWarnings("unchecked")
-    private void appendTopics(StringBuilder result, Map<?, ?> repo) {
+    void appendTopics(StringBuilder result, Map<?, ?> repo) {
         Object topicsObj = repo.get("topics");
         if (topicsObj instanceof List<?> topics && !topics.isEmpty()) {
             result.append(LABEL_TOPICS).append(
@@ -196,7 +196,7 @@ public class GithubApiClient {
         }
     }
 
-    private void appendLanguageBreakdown(StringBuilder result, Map<String, Long> languages) {
+    void appendLanguageBreakdown(StringBuilder result, Map<String, Long> languages) {
         long total = languages.values().stream().mapToLong(Long::longValue).sum();
         if (total == 0) return;
 
@@ -208,7 +208,7 @@ public class GithubApiClient {
         result.append(LABEL_LANGUAGES).append(breakdown).append("\n");
     }
 
-    private void appendTechStackSummary(StringBuilder result, Map<String, Long> totalLanguages) {
+    void appendTechStackSummary(StringBuilder result, Map<String, Long> totalLanguages) {
         if (totalLanguages.isEmpty()) return;
 
         long total = totalLanguages.values().stream().mapToLong(Long::longValue).sum();
@@ -263,11 +263,11 @@ public class GithubApiClient {
         return null;
     }
 
-    private void mergeLanguages(Map<String, Long> total, Map<String, Long> repoLanguages) {
+    void mergeLanguages(Map<String, Long> total, Map<String, Long> repoLanguages) {
         repoLanguages.forEach((lang, bytes) -> total.merge(lang, bytes, Long::sum));
     }
 
-    private String formatDate(String isoDate) {
+    String formatDate(String isoDate) {
         if (isoDate == null) return null;
         try {
             return LocalDate.parse(isoDate.substring(0, 10), DateTimeFormatter.ISO_LOCAL_DATE).toString();
