@@ -35,25 +35,25 @@ public class ResumeTextSummarizer {
                     + "|학력\\s{0,5}(?:사항)?|education|academic"
                     + "|연락처|contact|인적\\s{0,5}사항|personal\\s{0,5}info)"
                     + "[\\s#=\\-*|】:]{0,20}$",
-            Pattern.CASE_INSENSITIVE | Pattern.MULTILINE
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.MULTILINE
     );
 
     private static final Pattern SKILLS_PATTERN = Pattern.compile(
-            "기술\\s*스택|skills?|tech(?:nical)?\\s*(?:stack|skills?)", Pattern.CASE_INSENSITIVE);
+            "기술\\s*스택|skills?|tech(?:nical)?\\s*(?:stack|skills?)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern PROJECTS_PATTERN = Pattern.compile(
-            "프로젝트|projects?", Pattern.CASE_INSENSITIVE);
+            "프로젝트|projects?", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern EXPERIENCE_PATTERN = Pattern.compile(
-            "경력|work\\s*experience|experience|career", Pattern.CASE_INSENSITIVE);
+            "경력|work\\s*experience|experience|career", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern EDUCATION_PATTERN = Pattern.compile(
-            "학력|education|academic", Pattern.CASE_INSENSITIVE);
+            "학력|education|academic", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern CERTIFICATIONS_PATTERN = Pattern.compile(
-            "자격|certifications?|licenses?", Pattern.CASE_INSENSITIVE);
+            "자격|certifications?|licenses?", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern AWARDS_PATTERN = Pattern.compile(
-            "수상|awards?|honors?", Pattern.CASE_INSENSITIVE);
+            "수상|awards?|honors?", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern SUMMARY_PATTERN = Pattern.compile(
-            "자기\\s*소개|summary|objective|about\\s*me|소개", Pattern.CASE_INSENSITIVE);
+            "자기\\s*소개|summary|objective|about\\s*me|소개", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern CONTACT_PATTERN = Pattern.compile(
-            "연락처|contact|인적\\s*사항|personal\\s*info", Pattern.CASE_INSENSITIVE);
+            "연락처|contact|인적\\s*사항|personal\\s*info", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     public String summarize(String parsedText, int maxLength, InterviewLevel level) {
         if (parsedText == null || parsedText.isEmpty()) {
