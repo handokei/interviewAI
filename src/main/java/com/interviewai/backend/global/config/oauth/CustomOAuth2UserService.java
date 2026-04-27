@@ -32,9 +32,15 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         OAuthProvider provider = OAuthProvider.valueOf(registrationId.toUpperCase());
         OAuth2UserInfo userInfo = resolveOAuth2UserInfo(provider, attributes);
 
+        String githubToken = provider == OAuthProvider.GITHUB
+                ? userRequest.getAccessToken().getTokenValue() : null;
+
         User user = userRepository.findByProviderAndProviderId(provider, userInfo.getProviderId())
                 .map(existing -> {
                     existing.updateProfile(userInfo.getName(), userInfo.getEmail(), userInfo.getProfileImageUrl());
+                    if (githubToken != null) {
+                        existing.updateGithubAccessToken(githubToken);
+                    }
                     return existing;
                 })
                 .orElseGet(() -> userRepository.save(
@@ -44,6 +50,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                                 .email(userInfo.getEmail())
                                 .name(userInfo.getName())
                                 .profileImageUrl(userInfo.getProfileImageUrl())
+                                .githubAccessToken(githubToken)
                                 .role(UserRole.USER)
                                 .build()
                 ));
