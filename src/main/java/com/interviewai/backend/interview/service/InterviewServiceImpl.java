@@ -6,6 +6,7 @@ import com.interviewai.backend.client.JobCrawlerClient;
 import com.interviewai.backend.client.dto.ChatMessage;
 import com.interviewai.backend.global.common.exception.BusinessException;
 import com.interviewai.backend.global.config.InterviewProperties;
+import com.interviewai.backend.document.enums.DocumentType;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
 import com.interviewai.backend.interview.controller.dto.*;
@@ -61,6 +62,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewEvaluationService interviewEvaluationService;
     private final ConversationSummaryService conversationSummaryService;
     private final TokenEstimator tokenEstimator;
+    private final ResumeTextSummarizer resumeTextSummarizer;
     private final InterviewProperties interviewProperties;
 
     @Override
@@ -110,11 +112,12 @@ public class InterviewServiceImpl implements InterviewService {
             );
         }
 
+        List<DocumentTruncationInfo> truncations = buildDocumentTruncations(documents);
         String systemPrompt = buildSystemPrompt(session, documents, jobPostingContent, githubInfo);
         session.setSystemPrompt(systemPrompt);
         interviewSessionRepository.save(session);
 
-        return InterviewStartResponseDto.of(session, null);
+        return InterviewStartResponseDto.of(session, null, truncations);
     }
 
     @Override
@@ -439,8 +442,13 @@ public class InterviewServiceImpl implements InterviewService {
             };
             prompt.append("\n=== 지원자 ").append(docLabel).append(" ===\n");
             String parsedText = doc.getParsedText();
-            if (parsedText.length() > interviewProperties.getPrompt().getMaxDocumentLength()) {
-                parsedText = parsedText.substring(0, interviewProperties.getPrompt().getMaxDocumentLength()) + "...";
+            int maxLen = interviewProperties.getPrompt().getMaxDocumentLength();
+            if (parsedText.length() > maxLen) {
+                if (doc.getDocumentType() == DocumentType.RESUME) {
+                    parsedText = resumeTextSummarizer.summarize(parsedText, maxLen, session.getLevel());
+                } else {
+                    parsedText = parsedText.substring(0, maxLen) + "...";
+                }
             }
             prompt.append(parsedText).append("\n");
         }
@@ -460,6 +468,22 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         return prompt.toString();
+    }
+
+    private List<DocumentTruncationInfo> buildDocumentTruncations(List<UserDocument> documents) {
+        int maxLen = interviewProperties.getPrompt().getMaxDocumentLength();
+        return documents.stream()
+                .filter(doc -> doc.getParsedText() != null)
+                .map(doc -> {
+                    int originalLength = doc.getParsedText().length();
+                    return DocumentTruncationInfo.builder()
+                            .fileName(doc.getOriginalFileName())
+                            .originalLength(originalLength)
+                            .usedLength(Math.min(originalLength, maxLen))
+                            .truncated(originalLength > maxLen)
+                            .build();
+                })
+                .toList();
     }
 
     private String buildSendMessageSystemPrompt(InterviewSession session, List<UserDocument> documents,
