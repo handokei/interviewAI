@@ -60,18 +60,24 @@ public class GithubApiClient {
     }
 
     public String extractGithubInfo(String githubUrl) {
+        return extractGithubInfo(githubUrl, null);
+    }
+
+    public String extractGithubInfo(String githubUrl, String accessToken) {
         String username = extractUsername(githubUrl);
         if (username == null) {
             return MSG_USERNAME_EXTRACT_FAILED;
         }
 
+        RestClient client = buildClient(accessToken);
+
         StringBuilder result = new StringBuilder();
         result.append(LABEL_USERNAME).append(username).append("\n\n");
 
         try {
-            appendUserInfo(result, username);
+            appendUserInfo(result, username, client);
             Map<String, Long> totalLanguages = new LinkedHashMap<>();
-            appendRepositories(result, username, totalLanguages);
+            appendRepositories(result, username, totalLanguages, client);
             appendTechStackSummary(result, totalLanguages);
         } catch (Exception e) {
             log.warn("GitHub API 호출 실패: {}", e.getMessage());
@@ -81,9 +87,20 @@ public class GithubApiClient {
         return result.toString();
     }
 
-    private void appendUserInfo(StringBuilder result, String username) {
+    private RestClient buildClient(String accessToken) {
+        if (accessToken == null) {
+            return restClient;
+        }
+        return RestClient.builder()
+                .baseUrl(githubApiProperties.getBaseUrl())
+                .defaultHeader("Accept", GITHUB_ACCEPT_HEADER)
+                .defaultHeader("Authorization", "Bearer " + accessToken)
+                .build();
+    }
+
+    private void appendUserInfo(StringBuilder result, String username, RestClient client) {
         try {
-            Map<?, ?> userInfo = restClient.get()
+            Map<?, ?> userInfo = client.get()
                     .uri("/users/{username}", username)
                     .retrieve()
                     .body(Map.class);
@@ -98,9 +115,9 @@ public class GithubApiClient {
         }
     }
 
-    private void appendRepositories(StringBuilder result, String username, Map<String, Long> totalLanguages) {
+    private void appendRepositories(StringBuilder result, String username, Map<String, Long> totalLanguages, RestClient client) {
         try {
-            List<?> repos = restClient.get()
+            List<?> repos = client.get()
                     .uri("/users/{username}/repos?sort=updated&per_page={maxRepos}", username,
                             githubApiProperties.getMaxRepos())
                     .retrieve()
@@ -122,9 +139,9 @@ public class GithubApiClient {
                     String repoName = (String) repo.get("name");
                     if (!Boolean.TRUE.equals(repo.get("fork"))) {
                         readmeFutures.put(repoName, CompletableFuture.supplyAsync(
-                                () -> fetchReadme(username, repoName), githubExecutor));
+                                () -> fetchReadme(username, repoName, client), githubExecutor));
                         languageFutures.put(repoName, CompletableFuture.supplyAsync(
-                                () -> fetchLanguages(username, repoName), githubExecutor));
+                                () -> fetchLanguages(username, repoName, client), githubExecutor));
                     }
                 }
             }
@@ -224,9 +241,9 @@ public class GithubApiClient {
                 LABEL_TECH_STACK + summary + "\n\n");
     }
 
-    Map<String, Long> fetchLanguages(String username, String repoName) {
+    Map<String, Long> fetchLanguages(String username, String repoName, RestClient client) {
         try {
-            Map<?, ?> raw = restClient.get()
+            Map<?, ?> raw = client.get()
                     .uri("/repos/{username}/{repo}/languages", username, repoName)
                     .retrieve()
                     .body(Map.class);
@@ -241,9 +258,9 @@ public class GithubApiClient {
         }
     }
 
-    String fetchReadme(String username, String repoName) {
+    String fetchReadme(String username, String repoName, RestClient client) {
         try {
-            Map<?, ?> readme = restClient.get()
+            Map<?, ?> readme = client.get()
                     .uri("/repos/{username}/{repo}/readme", username, repoName)
                     .retrieve()
                     .body(Map.class);

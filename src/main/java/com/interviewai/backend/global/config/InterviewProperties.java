@@ -13,6 +13,8 @@ public class InterviewProperties {
 
     private Prompt prompt = new Prompt();
     private Sse sse = new Sse();
+    private int crawlTimeoutSeconds = 15;
+    private int githubTimeoutSeconds = 30;
 
     @Getter
     @Setter
