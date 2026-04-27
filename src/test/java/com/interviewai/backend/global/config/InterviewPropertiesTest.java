@@ -16,6 +16,8 @@ class InterviewPropertiesTest {
         assertThat(properties.getPrompt().getMaxDocumentLength()).isEqualTo(5000);
         assertThat(properties.getPrompt().getMaxJobPostingLength()).isEqualTo(1500);
         assertThat(properties.getSse().getTimeoutMs()).isEqualTo(120_000L);
+        assertThat(properties.getCrawlTimeoutSeconds()).isEqualTo(15);
+        assertThat(properties.getGithubTimeoutSeconds()).isEqualTo(30);
     }
 
     @Test

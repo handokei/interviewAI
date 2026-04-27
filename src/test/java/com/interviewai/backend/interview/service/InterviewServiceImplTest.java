@@ -1321,7 +1321,7 @@ class InterviewServiceImplTest {
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
         given(jobCrawlerClient.crawl("https://jobs.example.com/backend")).willReturn(crawledContent);
-        given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
+        given(githubApiClient.extractGithubInfo(eq("https://github.com/testuser"), any())).willReturn(githubContent);
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
 
         // when
@@ -1330,7 +1330,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response).isNotNull();
         verify(jobCrawlerClient).crawl("https://jobs.example.com/backend");
-        verify(githubApiClient).extractGithubInfo("https://github.com/testuser");
+        verify(githubApiClient).extractGithubInfo(eq("https://github.com/testuser"), any());
     }
 
     @Test
@@ -1352,7 +1352,7 @@ class InterviewServiceImplTest {
                 .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
-        given(githubApiClient.extractGithubInfo("https://github.com/testuser")).willReturn(githubContent);
+        given(githubApiClient.extractGithubInfo(eq("https://github.com/testuser"), any())).willReturn(githubContent);
         given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
 
         // when
@@ -1360,7 +1360,7 @@ class InterviewServiceImplTest {
 
         // then
         assertThat(response).isNotNull();
-        verify(githubApiClient).extractGithubInfo("https://github.com/testuser");
+        verify(githubApiClient).extractGithubInfo(eq("https://github.com/testuser"), any());
         verify(jobCrawlerClient, org.mockito.Mockito.never()).crawl(any());
     }
 
@@ -1399,7 +1399,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response).isNotNull();
         verify(jobCrawlerClient).crawl("https://jobs.example.com/backend");
-        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any());
+        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any(), any());
     }
 
     @Test
@@ -1428,7 +1428,7 @@ class InterviewServiceImplTest {
         // then
         assertThat(response).isNotNull();
         verify(jobCrawlerClient, org.mockito.Mockito.never()).crawl(any());
-        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any());
+        verify(githubApiClient, org.mockito.Mockito.never()).extractGithubInfo(any(), any());
     }
 
     @Test
