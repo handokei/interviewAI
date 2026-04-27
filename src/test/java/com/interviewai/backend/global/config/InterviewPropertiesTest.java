@@ -13,7 +13,7 @@ class InterviewPropertiesTest {
     void 기능_테스트_기본값으로_InterviewProperties가_초기화된다() {
         InterviewProperties properties = new InterviewProperties();
 
-        assertThat(properties.getPrompt().getMaxDocumentLength()).isEqualTo(1500);
+        assertThat(properties.getPrompt().getMaxDocumentLength()).isEqualTo(5000);
         assertThat(properties.getPrompt().getMaxJobPostingLength()).isEqualTo(1500);
         assertThat(properties.getSse().getTimeoutMs()).isEqualTo(120_000L);
     }

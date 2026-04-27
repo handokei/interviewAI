@@ -105,6 +105,9 @@ class InterviewServiceImplTest {
     private TokenEstimator tokenEstimator;
 
     @Mock
+    private ResumeTextSummarizer resumeTextSummarizer;
+
+    @Mock
     private InterviewProperties interviewProperties;
 
     private User testUser;
@@ -1979,8 +1982,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_startInterview_문서_텍스트_길이_초과시_절삭한다")
-    void 기능_테스트_startInterview_문서_텍스트_길이_초과시_절삭한다() {
+    @DisplayName("기능_테스트_startInterview_이력서_텍스트_길이_초과시_스마트_절삭한다")
+    void 기능_테스트_startInterview_이력서_텍스트_길이_초과시_스마트_절삭한다() {
         // given
         Long userId = 1L;
         InterviewStartRequestDto request = new InterviewStartRequestDto();
@@ -1988,11 +1991,15 @@ class InterviewServiceImplTest {
         setField(request, "level", InterviewLevel.JUNIOR);
         setField(request, "documentIds", List.of(1L));
 
-        // maxDocumentLength default is 1500, create text longer than that
-        String longText = "A".repeat(2000);
+        String longText = "A".repeat(6000);
+        String summarizedText = "요약된 이력서 내용";
         UserDocument doc = mock(UserDocument.class);
         when(doc.getDocumentType()).thenReturn(DocumentType.RESUME);
         when(doc.getParsedText()).thenReturn(longText);
+        when(doc.getOriginalFileName()).thenReturn("resume.pdf");
+
+        given(resumeTextSummarizer.summarize(eq(longText), eq(5000), eq(InterviewLevel.JUNIOR)))
+                .willReturn(summarizedText);
 
         InterviewSession savedSession = InterviewSession.builder()
                 .user(testUser).mode(InterviewMode.RESUME).level(InterviewLevel.JUNIOR).build();
@@ -2003,14 +2010,17 @@ class InterviewServiceImplTest {
         given(interviewSessionDocumentRepository.save(any(InterviewSessionDocument.class))).willReturn(null);
 
         // when
-        interviewService.startInterview(userId, request);
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
 
         // then
+        verify(resumeTextSummarizer).summarize(eq(longText), eq(5000), eq(InterviewLevel.JUNIOR));
         ArgumentCaptor<InterviewSession> sessionCaptor = ArgumentCaptor.forClass(InterviewSession.class);
         verify(interviewSessionRepository, times(2)).save(sessionCaptor.capture());
         String prompt = sessionCaptor.getAllValues().get(1).getSystemPrompt();
-        assertThat(prompt).contains("...");
-        assertThat(prompt).doesNotContain(longText); // full text not included
+        assertThat(prompt).contains(summarizedText);
+        assertThat(prompt).doesNotContain(longText);
+        assertThat(response.getDocumentTruncations()).hasSize(1);
+        assertThat(response.getDocumentTruncations().get(0).isTruncated()).isTrue();
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.interviewai.backend.document.service;
 
 import com.interviewai.backend.client.PdfParserClient;
 import com.interviewai.backend.global.common.exception.BusinessException;
+import com.interviewai.backend.global.config.InterviewProperties;
 import com.interviewai.backend.document.controller.dto.DocumentListResponseDto;
 import com.interviewai.backend.document.enums.DocumentErrorCode;
 import com.interviewai.backend.document.enums.DocumentType;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,7 +53,11 @@ class DocumentServiceImplTest {
     @Mock
     private PdfParserClient pdfParserClient;
 
+    @Mock
+    private InterviewProperties interviewProperties;
+
     private User testUser;
+    private static final String LONG_PARSED_TEXT = "이력서 테스트 내용입니다. 이 텍스트는 50자 이상이어야 이미지 PDF 감지를 통과합니다. 충분한 길이의 텍스트를 생성합니다.";
 
     @BeforeEach
     void setUp() {
@@ -63,6 +69,9 @@ class DocumentServiceImplTest {
                 .profileImageUrl(null)
                 .role(UserRole.USER)
                 .build();
+
+        InterviewProperties.Prompt promptProperties = new InterviewProperties.Prompt();
+        lenient().when(interviewProperties.getPrompt()).thenReturn(promptProperties);
     }
 
     @Test
@@ -100,11 +109,11 @@ class DocumentServiceImplTest {
                 .user(testUser)
                 .documentType(DocumentType.RESUME)
                 .originalFileName("resume.pdf")
-                .parsedText("이력서 내용")
+                .parsedText(LONG_PARSED_TEXT)
                 .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
-        given(pdfParserClient.parse(any())).willReturn("이력서 내용");
+        given(pdfParserClient.parse(any())).willReturn(LONG_PARSED_TEXT);
         given(userDocumentRepository.save(any(UserDocument.class))).willReturn(savedDocument);
 
         // when
@@ -114,6 +123,8 @@ class DocumentServiceImplTest {
         assertThat(response).isNotNull();
         assertThat(response.getDocumentType()).isEqualTo(DocumentType.RESUME);
         assertThat(response.getOriginalFileName()).isEqualTo("resume.pdf");
+        assertThat(response.getParsedTextLength()).isEqualTo(LONG_PARSED_TEXT.length());
+        assertThat(response.getMaxUsableLength()).isEqualTo(5000);
     }
 
     @Test
@@ -123,12 +134,13 @@ class DocumentServiceImplTest {
         Long userId = 1L;
         MockMultipartFile pdfFile = new MockMultipartFile(
                 "file", "resume.pdf", "application/pdf", "pdf content".getBytes());
-        String textWithNullBytes = "이력서\u0000내용\u0000";
+        String textWithNullBytes = "이력서\u0000내용입니다. 이 텍스트는 50자 이상이어야 이미지 PDF 감지를 통과합니다. 충분한 길이의 텍스트를 생성합니다.\u0000";
+        String cleanedText = textWithNullBytes.replace("\u0000", "");
         UserDocument savedDocument = UserDocument.builder()
                 .user(testUser)
                 .documentType(DocumentType.RESUME)
                 .originalFileName("resume.pdf")
-                .parsedText("이력서내용")
+                .parsedText(cleanedText)
                 .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
@@ -188,6 +200,24 @@ class DocumentServiceImplTest {
         assertThat(result).isNotNull();
         assertThat(result.getTotalElements()).isZero();
         assertThat(result.getContent()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_이미지_PDF는_텍스트_추출_불가_에러를_반환한다")
+    void 예외_테스트_이미지_PDF는_텍스트_추출_불가_에러를_반환한다() throws Exception {
+        // given
+        Long userId = 1L;
+        MockMultipartFile pdfFile = new MockMultipartFile(
+                "file", "scanned.pdf", "application/pdf", "pdf content".getBytes());
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(pdfParserClient.parse(any())).willReturn("짧음");
+
+        // when & then
+        assertThatThrownBy(() -> documentService.uploadDocument(userId, pdfFile, DocumentType.RESUME))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(DocumentErrorCode.IMAGE_PDF_NOT_SUPPORTED));
     }
 
     @Test
