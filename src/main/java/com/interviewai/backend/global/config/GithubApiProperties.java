@@ -14,4 +14,6 @@ public class GithubApiProperties {
     private String baseUrl = "https://api.github.com";
     private int maxRepos = 10;
     private int maxReadmeLength = 500;
+    private int maxLanguages = 5;
+    private int parallelTimeoutSeconds = 30;
 }

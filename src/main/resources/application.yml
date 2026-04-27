@@ -82,6 +82,8 @@ github:
     base-url: https://api.github.com
     max-repos: 10
     max-readme-length: 500
+    max-languages: 5
+    parallel-timeout-seconds: 30
 
 job-crawler:
   timeout-ms: 10000
