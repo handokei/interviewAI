@@ -25,16 +25,16 @@ public class ResumeTextSummarizer {
     }
 
     private static final Pattern SECTION_HEADER = Pattern.compile(
-            "^[\\s#=\\-*|【]*(?:\\d+\\.?\\s*)?"
-                    + "(?:기술\\s*스택|skills?|tech(?:nical)?\\s*(?:stack|skills?)"
-                    + "|프로젝트\\s*(?:경험|이력)?|projects?"
-                    + "|경력\\s*(?:사항|기술서)?|work\\s*experience|experience|career"
-                    + "|자격\\s*(?:증|사항)|certifications?|licenses?"
-                    + "|수상\\s*(?:경력|내역)?|awards?|honors?"
-                    + "|자기\\s*소개|summary|objective|about\\s*me|소개"
-                    + "|학력\\s*(?:사항)?|education|academic"
-                    + "|연락처|contact|인적\\s*사항|personal\\s*info)"
-                    + "[\\s#=\\-*|】:]*$",
+            "^[\\s#=\\-*|【]{0,20}(?:\\d+\\.?\\s{0,5})?"
+                    + "(?:기술\\s{0,5}스택|skills?|tech(?:nical)?\\s{0,5}(?:stack|skills?)"
+                    + "|프로젝트\\s{0,5}(?:경험|이력)?|projects?"
+                    + "|경력\\s{0,5}(?:사항|기술서)?|work\\s{0,5}experience|experience|career"
+                    + "|자격\\s{0,5}(?:증|사항)|certifications?|licenses?"
+                    + "|수상\\s{0,5}(?:경력|내역)?|awards?|honors?"
+                    + "|자기\\s{0,5}소개|summary|objective|about\\s{0,5}me|소개"
+                    + "|학력\\s{0,5}(?:사항)?|education|academic"
+                    + "|연락처|contact|인적\\s{0,5}사항|personal\\s{0,5}info)"
+                    + "[\\s#=\\-*|】:]{0,20}$",
             Pattern.CASE_INSENSITIVE | Pattern.MULTILINE
     );
 
