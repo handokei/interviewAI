@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 @Component
@@ -14,16 +16,16 @@ import java.util.Base64;
 public class EncryptedStringConverter implements AttributeConverter<String, String> {
 
     private static final String ALGORITHM = "AES";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_LENGTH = 128;
 
     private final SecretKeySpec secretKey;
 
     public EncryptedStringConverter(@Value("${encryption.secret-key}") String key) {
-        byte[] keyBytes = key.getBytes();
-        if (keyBytes.length != 16 && keyBytes.length != 24 && keyBytes.length != 32) {
-            byte[] padded = new byte[16];
-            System.arraycopy(keyBytes, 0, padded, 0, Math.min(keyBytes.length, 16));
-            keyBytes = padded;
-        }
+        byte[] keyBytes = new byte[16];
+        byte[] source = key.getBytes();
+        System.arraycopy(source, 0, keyBytes, 0, Math.min(source.length, 16));
         this.secretKey = new SecretKeySpec(keyBytes, ALGORITHM);
     }
 
@@ -31,9 +33,18 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
     public String convertToDatabaseColumn(String attribute) {
         if (attribute == null) return null;
         try {
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-            return Base64.getEncoder().encodeToString(cipher.doFinal(attribute.getBytes()));
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            new SecureRandom().nextBytes(iv);
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            byte[] encrypted = cipher.doFinal(attribute.getBytes());
+
+            byte[] combined = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
+
+            return Base64.getEncoder().encodeToString(combined);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to encrypt", e);
         }
@@ -43,9 +54,17 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
     public String convertToEntityAttribute(String dbData) {
         if (dbData == null) return null;
         try {
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.DECRYPT_MODE, secretKey);
-            return new String(cipher.doFinal(Base64.getDecoder().decode(dbData)));
+            byte[] combined = Base64.getDecoder().decode(dbData);
+
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            System.arraycopy(combined, 0, iv, 0, iv.length);
+
+            byte[] encrypted = new byte[combined.length - iv.length];
+            System.arraycopy(combined, iv.length, encrypted, 0, encrypted.length);
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            return new String(cipher.doFinal(encrypted));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to decrypt", e);
         }
