@@ -618,11 +618,23 @@ public class InterviewServiceImpl implements InterviewService {
                 .build();
     }
 
-    private static final String GITHUB_SUMMARY_PROMPT =
-            "당신은 개발자 채용 면접관입니다. 아래 GitHub 분석 데이터를 읽고, "
-            + "이 개발자의 기술 역량과 개발 습관을 300자 이내로 요약해주세요. "
-            + "커밋 컨벤션, 브랜치 전략, PR 습관, 코드 구조, 활동 패턴을 중심으로 작성해주세요. "
-            + "요약만 작성하고, 다른 설명은 하지 마세요.";
+    private static final String GITHUB_SUMMARY_PROMPT = """
+            당신은 개발자 채용 면접관입니다. 아래 GitHub 분석 데이터를 읽고,
+            이 지원자에 대해 다음 항목을 각각 한 줄로 평가해주세요.
+
+            1. 커밋 컨벤션: 메시지 품질, 커밋 단위 적절성
+            2. 브랜치 전략: main/dev/feature 분리 여부, 네이밍 체계성
+            3. PR 습관: PR 제목 품질, PR을 통한 머지 실천 여부
+            4. 코드 구조: 패키지/디렉토리 설계, 테스트 코드 존재 여부
+            5. 활동 패턴: 커밋 빈도, 꾸준함
+            6. 이슈 관리: 이슈 생성 후 작업, 이슈-PR 연결 여부
+
+            규칙:
+            - 데이터에서 확인할 수 있는 항목만 작성하세요.
+            - 데이터에 근거가 없는 항목은 작성하지 마세요 (추측 금지).
+            - 각 항목에 판단 근거가 되는 구체적 예시를 포함하세요.
+            - 평가만 작성하고, 다른 설명은 하지 마세요.
+            """;
 
     private String summarizeGithubAnalysis(String rawAnalysis) {
         if (rawAnalysis == null || rawAnalysis.isBlank()) {
