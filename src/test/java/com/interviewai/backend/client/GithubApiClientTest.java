@@ -42,6 +42,13 @@ class GithubApiClientTest {
         lenient().when(githubApiProperties.getMaxReadmeLength()).thenReturn(500);
         lenient().when(githubApiProperties.getMaxLanguages()).thenReturn(5);
         lenient().when(githubApiProperties.getParallelTimeoutSeconds()).thenReturn(30);
+        lenient().when(githubApiProperties.getMaxDetailRepos()).thenReturn(3);
+        lenient().when(githubApiProperties.getMaxCommits()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxBranches()).thenReturn(30);
+        lenient().when(githubApiProperties.getMaxBranchDisplay()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxPullRequests()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxIssues()).thenReturn(5);
+        lenient().when(githubApiProperties.getThreadPoolSize()).thenReturn(4);
         githubApiClient = new GithubApiClient(githubApiProperties, restClient);
     }
 
@@ -668,5 +675,182 @@ class GithubApiClientTest {
         assertThat(result).contains("[Java]");
         assertThat(result).contains("마지막 활동: 2026-04-25");
         assertThat(result).contains("설명: Spring Boot 프로젝트");
+    }
+
+    // -----------------------------------------------------------------------
+    // 심화 분석 — extractOwnerAndRepo, extractRepoAnalysis, append* 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_정상_파싱한다")
+    void 기능_테스트_extractOwnerAndRepo_정상_파싱한다() {
+        String[] result = githubApiClient.extractOwnerAndRepo("https://github.com/handokei/interviewAI");
+        assertThat(result).isNotNull();
+        assertThat(result[0]).isEqualTo("handokei");
+        assertThat(result[1]).isEqualTo("interviewAI");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_git_suffix_제거한다")
+    void 기능_테스트_extractOwnerAndRepo_git_suffix_제거한다() {
+        String[] result = githubApiClient.extractOwnerAndRepo("https://github.com/handokei/interviewAI.git");
+        assertThat(result).isNotNull();
+        assertThat(result[1]).isEqualTo("interviewAI");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_잘못된_URL은_null_반환한다")
+    void 기능_테스트_extractOwnerAndRepo_잘못된_URL은_null_반환한다() {
+        assertThat(githubApiClient.extractOwnerAndRepo("https://github.com/handokei")).isNull();
+        assertThat(githubApiClient.extractOwnerAndRepo(null)).isNull();
+        assertThat(githubApiClient.extractOwnerAndRepo("invalid")).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractRepoAnalysis_빈_리스트는_빈_문자열_반환한다")
+    void 기능_테스트_extractRepoAnalysis_빈_리스트는_빈_문자열_반환한다() {
+        assertThat(githubApiClient.extractRepoAnalysis(List.of(), null)).isEmpty();
+        assertThat(githubApiClient.extractRepoAnalysis(null, null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendBranches_브랜치_목록을_표시한다")
+    void 기능_테스트_appendBranches_브랜치_목록을_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(
+                List.of(Map.of("name", "main"), Map.of("name", "dev"), Map.of("name", "feat/login"))
+        );
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendBranches(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("브랜치: main, dev, feat/login");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendRecentCommits_커밋_메시지를_표시한다")
+    void 기능_테스트_appendRecentCommits_커밋_메시지를_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> commit = Map.of(
+                "commit", Map.of(
+                        "message", "feat(#1): 로그인 기능 추가",
+                        "author", Map.of("date", "2026-04-28T10:00:00Z")
+                )
+        );
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of(commit));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendRecentCommits(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("feat(#1): 로그인 기능 추가");
+        assertThat(result.toString()).contains("2026-04-28");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendPullRequests_PR_제목을_표시한다")
+    void 기능_테스트_appendPullRequests_PR_제목을_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(
+                List.of(Map.of("title", "feat: 로그인 구현"))
+        );
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendPullRequests(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("PR: feat: 로그인 구현");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendIssues_이슈_제목을_표시하고_PR은_제외한다")
+    void 기능_테스트_appendIssues_이슈_제목을_표시하고_PR은_제외한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> issue = new java.util.HashMap<>();
+        issue.put("title", "버그: 로그인 실패");
+        issue.put("pull_request", null);
+
+        Map<String, Object> prIssue = new java.util.HashMap<>();
+        prIssue.put("title", "feat: PR 제목");
+        prIssue.put("pull_request", Map.of("url", "https://..."));
+
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of(issue, prIssue));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendIssues(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("버그: 로그인 실패");
+        assertThat(result.toString()).doesNotContain("feat: PR 제목");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendDirectoryStructure_1단계_디렉토리를_표시한다")
+    void 기능_테스트_appendDirectoryStructure_1단계_디렉토리를_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> tree = Map.of("tree", List.of(
+                Map.of("path", "src", "type", "tree"),
+                Map.of("path", "docs", "type", "tree"),
+                Map.of("path", "build.gradle", "type", "blob"),
+                Map.of("path", "README.md", "type", "blob"),
+                Map.of("path", "src/main", "type", "tree")
+        ));
+        when(responseSpec.body(any(Class.class))).thenReturn(tree);
+
+        Map<String, Object> repoInfo = new java.util.HashMap<>();
+        repoInfo.put("default_branch", "main");
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendDirectoryStructure(result, "owner", "repo", restClient, repoInfo);
+
+        assertThat(result.toString()).contains("src/");
+        assertThat(result.toString()).contains("docs/");
+        assertThat(result.toString()).contains("build.gradle");
+        assertThat(result.toString()).doesNotContain("README.md");
+        assertThat(result.toString()).doesNotContain("src/main");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendBranches_API_실패시_무시한다")
+    void 기능_테스트_appendBranches_API_실패시_무시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("API 실패"));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendBranches(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).isEmpty();
     }
 }

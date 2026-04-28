@@ -18,6 +18,13 @@ class GithubApiPropertiesTest {
         assertThat(properties.getMaxReadmeLength()).isEqualTo(500);
         assertThat(properties.getMaxLanguages()).isEqualTo(5);
         assertThat(properties.getParallelTimeoutSeconds()).isEqualTo(30);
+        assertThat(properties.getMaxDetailRepos()).isEqualTo(3);
+        assertThat(properties.getMaxCommits()).isEqualTo(5);
+        assertThat(properties.getMaxBranches()).isEqualTo(30);
+        assertThat(properties.getMaxBranchDisplay()).isEqualTo(5);
+        assertThat(properties.getMaxPullRequests()).isEqualTo(5);
+        assertThat(properties.getMaxIssues()).isEqualTo(5);
+        assertThat(properties.getThreadPoolSize()).isEqualTo(4);
     }
 
     @Test
