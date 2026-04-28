@@ -110,7 +110,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
 
-        String result = githubApiClient.fetchReadme("testuser", "testrepo");
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
 
         assertThat(result).isEqualTo("Hello README");
     }
@@ -126,7 +126,7 @@ class GithubApiClientTest {
         when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
         when(headersSpec.retrieve()).thenThrow(new RuntimeException("404 Not Found"));
 
-        String result = githubApiClient.fetchReadme("testuser", "norepo");
+        String result = githubApiClient.fetchReadme("testuser", "norepo", restClient);
 
         assertThat(result).isNull();
     }
@@ -143,7 +143,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(Map.of("type", "file"));
 
-        String result = githubApiClient.fetchReadme("testuser", "testrepo");
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
 
         assertThat(result).isNull();
     }
@@ -160,7 +160,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(null);
 
-        String result = githubApiClient.fetchReadme("testuser", "testrepo");
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
 
         assertThat(result).isNull();
     }
@@ -181,7 +181,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
 
-        String result = githubApiClient.fetchReadme("testuser", "testrepo");
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
 
         assertThat(result).endsWith("...");
         assertThat(result).hasSize(503); // 500 chars + "..."
@@ -202,7 +202,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
 
-        String result = githubApiClient.fetchReadme("testuser", "testrepo");
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
 
         assertThat(result).doesNotEndWith("...");
         assertThat(result).hasSize(500);
@@ -442,7 +442,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(Map.of("Java", 50000, "Kotlin", 3000));
 
-        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
 
         assertThat(result).containsEntry("Java", 50000L);
         assertThat(result).containsEntry("Kotlin", 3000L);
@@ -456,7 +456,7 @@ class GithubApiClientTest {
         when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
         when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("API 실패"));
 
-        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
 
         assertThat(result).isEmpty();
     }
@@ -473,7 +473,7 @@ class GithubApiClientTest {
         when(headersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(any(Class.class))).thenReturn(null);
 
-        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo");
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
 
         assertThat(result).isEmpty();
     }
@@ -598,6 +598,42 @@ class GithubApiClientTest {
     @DisplayName("기능_테스트_잘못된_날짜는_null_반환한다")
     void 기능_테스트_잘못된_날짜는_null_반환한다() {
         assertThat(githubApiClient.formatDate("invalid")).isNull();
+    }
+
+    // -----------------------------------------------------------------------
+    // buildClient 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient(null);
+        assertThat(result).isSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_있으면_새_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_있으면_새_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient("gho_test_token");
+        assertThat(result).isNotSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다")
+    void 기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser", null);
+        assertThat(result).contains("testuser");
     }
 
     @Test

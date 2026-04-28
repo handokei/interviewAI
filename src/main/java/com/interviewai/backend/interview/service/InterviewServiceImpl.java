@@ -86,12 +86,13 @@ public class InterviewServiceImpl implements InterviewService {
 
         CompletableFuture<String> githubFuture = null;
         if (request.getGithubUrl() != null) {
+            String githubToken = user.getGithubAccessToken();
             githubFuture = CompletableFuture.supplyAsync(
-                    () -> githubApiClient.extractGithubInfo(request.getGithubUrl()));
+                    () -> githubApiClient.extractGithubInfo(request.getGithubUrl(), githubToken));
         }
 
-        String jobPostingContent = joinSafely(crawlFuture, 15);
-        String githubInfo = joinSafely(githubFuture, 30);
+        String jobPostingContent = joinSafely(crawlFuture, interviewProperties.getCrawlTimeoutSeconds());
+        String githubInfo = joinSafely(githubFuture, interviewProperties.getGithubTimeoutSeconds());
 
         InterviewSession session = InterviewSession.builder()
                 .user(user)
