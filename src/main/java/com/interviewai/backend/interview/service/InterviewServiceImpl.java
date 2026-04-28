@@ -88,8 +88,10 @@ public class InterviewServiceImpl implements InterviewService {
         List<String> repoUrls = request.getEffectiveGithubRepoUrls();
         if (!repoUrls.isEmpty()) {
             String githubToken = user.getGithubAccessToken();
-            githubFuture = CompletableFuture.supplyAsync(
-                    () -> githubApiClient.extractRepoAnalysis(repoUrls, githubToken));
+            githubFuture = CompletableFuture.supplyAsync(() -> {
+                String rawAnalysis = githubApiClient.extractRepoAnalysis(repoUrls, githubToken);
+                return summarizeGithubAnalysis(rawAnalysis);
+            });
         }
 
         String jobPostingContent = joinSafely(crawlFuture, interviewProperties.getCrawlTimeoutSeconds());
@@ -614,6 +616,27 @@ public class InterviewServiceImpl implements InterviewService {
                 .answerLevel(latestAi.getAnswerLevel())
                 .qualityHint(latestAi.getQualityHint())
                 .build();
+    }
+
+    private static final String GITHUB_SUMMARY_PROMPT =
+            "당신은 개발자 채용 면접관입니다. 아래 GitHub 분석 데이터를 읽고, "
+            + "이 개발자의 기술 역량과 개발 습관을 300자 이내로 요약해주세요. "
+            + "커밋 컨벤션, 브랜치 전략, PR 습관, 코드 구조, 활동 패턴을 중심으로 작성해주세요. "
+            + "요약만 작성하고, 다른 설명은 하지 마세요.";
+
+    private String summarizeGithubAnalysis(String rawAnalysis) {
+        if (rawAnalysis == null || rawAnalysis.isBlank()) {
+            return null;
+        }
+        try {
+            String summary = claudeAiClient.summarize(GITHUB_SUMMARY_PROMPT, rawAnalysis);
+            log.info("GitHub 분석 요약 완료: {}자 → {}자", rawAnalysis.length(),
+                    summary != null ? summary.length() : 0);
+            return summary;
+        } catch (Exception e) {
+            log.warn("GitHub 분석 요약 실패, 원문 사용: {}", e.getMessage());
+            return rawAnalysis;
+        }
     }
 
     private String joinSafely(CompletableFuture<String> future, long timeoutSeconds) {
