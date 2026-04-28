@@ -2,6 +2,7 @@ package com.interviewai.backend.client;
 
 import com.interviewai.backend.global.config.GithubApiProperties;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -16,11 +17,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Component
 public class GithubApiClient {
+
+    private static final Set<String> IMPORTANT_FILES = Set.of(
+            "docker-compose.yml", "dockerfile", "build.gradle", "pom.xml",
+            "package.json", "tsconfig.json", "makefile", ".github",
+            "cargo.toml", "go.mod", "requirements.txt", "pyproject.toml"
+    );
 
     private static final String GITHUB_ACCEPT_HEADER = "application/vnd.github.v3+json";
 
@@ -50,19 +58,26 @@ public class GithubApiClient {
                 .baseUrl(githubApiProperties.getBaseUrl())
                 .defaultHeader("Accept", GITHUB_ACCEPT_HEADER)
                 .build();
-        this.githubExecutor = Executors.newFixedThreadPool(4);
+        this.githubExecutor = Executors.newFixedThreadPool(githubApiProperties.getThreadPoolSize());
     }
 
     GithubApiClient(GithubApiProperties githubApiProperties, RestClient restClient) {
         this.githubApiProperties = githubApiProperties;
         this.restClient = restClient;
-        this.githubExecutor = Executors.newFixedThreadPool(4);
+        this.githubExecutor = Executors.newFixedThreadPool(githubApiProperties.getThreadPoolSize());
     }
 
+    @PreDestroy
+    public void destroy() {
+        githubExecutor.shutdown();
+    }
+
+    @Deprecated
     public String extractGithubInfo(String githubUrl) {
         return extractGithubInfo(githubUrl, null);
     }
 
+    @Deprecated
     public String extractGithubInfo(String githubUrl, String accessToken) {
         String username = extractUsername(githubUrl);
         if (username == null) {
@@ -293,6 +308,279 @@ public class GithubApiClient {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // 심화 분석 — 레포 URL 직접 입력 기반
+    // -----------------------------------------------------------------------
+
+    private static final String LABEL_BRANCHES = "  브랜치: ";
+    private static final String LABEL_RECENT_COMMITS = "  최근 커밋:\n";
+    private static final String LABEL_STRUCTURE = "  구조: ";
+    private static final String LABEL_PRS = "  PR: ";
+    private static final String LABEL_ISSUES = "  이슈: ";
+
+    public String extractRepoAnalysis(List<String> repoUrls, String accessToken) {
+        if (repoUrls == null || repoUrls.isEmpty()) {
+            return "";
+        }
+
+        int maxRepos = githubApiProperties.getMaxDetailRepos();
+        if (repoUrls.size() > maxRepos) {
+            repoUrls = repoUrls.subList(0, maxRepos);
+        }
+
+        RestClient client = buildClient(accessToken);
+        String username = extractOwner(repoUrls.get(0));
+
+        StringBuilder result = new StringBuilder();
+
+        if (username != null) {
+            result.append(LABEL_USERNAME).append(username).append("\n\n");
+            appendUserInfo(result, username, client);
+        }
+
+        result.append("분석 대상 레포지토리:\n");
+
+        int timeoutSeconds = githubApiProperties.getParallelTimeoutSeconds();
+
+        Map<String, CompletableFuture<String>> detailFutures = new LinkedHashMap<>();
+        for (String url : repoUrls) {
+            String[] ownerRepo = extractOwnerAndRepo(url);
+            if (ownerRepo == null) continue;
+            String owner = ownerRepo[0];
+            String repo = ownerRepo[1];
+
+            detailFutures.put(repo, CompletableFuture.supplyAsync(
+                    () -> buildRepoDetail(owner, repo, client), githubExecutor));
+        }
+
+        CompletableFuture.allOf(detailFutures.values().toArray(new CompletableFuture[0]))
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .exceptionally(e -> null)
+                .join();
+
+        for (Map.Entry<String, CompletableFuture<String>> entry : detailFutures.entrySet()) {
+            try {
+                String detail = entry.getValue().join();
+                if (detail != null) {
+                    result.append(detail);
+                }
+            } catch (Exception e) {
+                result.append("- ").append(entry.getKey()).append(": 분석 실패\n");
+            }
+        }
+
+        return result.toString();
+    }
+
+    private String buildRepoDetail(String owner, String repo, RestClient client) {
+        StringBuilder detail = new StringBuilder();
+
+        try {
+            Map<?, ?> repoInfo = client.get()
+                    .uri("/repos/{owner}/{repo}", owner, repo)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (repoInfo == null) return "- " + repo + ": 접근 불가\n";
+
+            String language = (String) repoInfo.get("language");
+            String pushedAt = formatDate((String) repoInfo.get("pushed_at"));
+
+            detail.append("- ").append(repo);
+            if (language != null) detail.append(" [").append(language).append("]");
+            detail.append(" (⭐").append(repoInfo.get("stargazers_count")).append(")");
+            if (pushedAt != null) detail.append(LABEL_LAST_ACTIVITY).append(pushedAt);
+            detail.append("\n");
+
+            if (repoInfo.get("description") != null) {
+                detail.append(LABEL_DESCRIPTION).append(repoInfo.get("description")).append("\n");
+            }
+
+            appendTopics(detail, repoInfo);
+
+            Map<String, Long> languages = fetchLanguages(owner, repo, client);
+            if (!languages.isEmpty()) {
+                appendLanguageBreakdown(detail, languages);
+            }
+
+            appendBranches(detail, owner, repo, client);
+            appendRecentCommits(detail, owner, repo, client);
+            appendDirectoryStructure(detail, owner, repo, client, repoInfo);
+            appendPullRequests(detail, owner, repo, client);
+            appendIssues(detail, owner, repo, client);
+
+            String readme = fetchReadme(owner, repo, client);
+            if (readme != null) {
+                detail.append(LABEL_README).append(readme).append("\n");
+            }
+
+        } catch (Exception e) {
+            log.warn("GitHub 레포 분석 실패 [{}/{}]: {}", owner, repo, e.getMessage());
+            detail.append("- ").append(repo).append(": 접근 불가 (private 레포이거나 존재하지 않는 레포)\n");
+        }
+
+        return detail.toString();
+    }
+
+    void appendBranches(StringBuilder result, String owner, String repo, RestClient client) {
+        try {
+            List<?> branches = client.get()
+                    .uri("/repos/{owner}/{repo}/branches?per_page={max}", owner, repo,
+                            githubApiProperties.getMaxBranches())
+                    .retrieve()
+                    .body(List.class);
+
+            if (branches == null || branches.isEmpty()) return;
+
+            List<String> branchNames = new ArrayList<>();
+            for (Object b : branches) {
+                if (b instanceof Map<?, ?> branch) {
+                    branchNames.add((String) branch.get("name"));
+                }
+            }
+
+            int displayCount = Math.min(branchNames.size(), githubApiProperties.getMaxBranchDisplay());
+            String display = branchNames.subList(0, displayCount).stream()
+                    .collect(Collectors.joining(", "));
+            if (branchNames.size() > displayCount) {
+                display += " 외 " + (branchNames.size() - displayCount) + "개";
+            }
+            result.append(LABEL_BRANCHES).append(display).append("\n");
+        } catch (Exception e) {
+            // 브랜치 조회 실패 무시
+        }
+    }
+
+    void appendRecentCommits(StringBuilder result, String owner, String repo, RestClient client) {
+        try {
+            List<?> commits = client.get()
+                    .uri("/repos/{owner}/{repo}/commits?per_page={max}", owner, repo,
+                            githubApiProperties.getMaxCommits())
+                    .retrieve()
+                    .body(List.class);
+
+            if (commits == null || commits.isEmpty()) return;
+
+            result.append(LABEL_RECENT_COMMITS);
+            for (Object c : commits) {
+                if (c instanceof Map<?, ?> commit) {
+                    Map<?, ?> commitData = (Map<?, ?>) commit.get("commit");
+                    if (commitData != null) {
+                        String message = (String) commitData.get("message");
+                        if (message != null) {
+                            String firstLine = message.split("\n")[0];
+                            Map<?, ?> author = (Map<?, ?>) commitData.get("author");
+                            String date = author != null ? formatDate((String) author.get("date")) : null;
+                            result.append("    - ").append(firstLine);
+                            if (date != null) result.append(" (").append(date).append(")");
+                            result.append("\n");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 커밋 조회 실패 무시
+        }
+    }
+
+    void appendDirectoryStructure(StringBuilder result, String owner, String repo,
+                                   RestClient client, Map<?, ?> repoInfo) {
+        try {
+            String defaultBranch = (String) repoInfo.get("default_branch");
+            if (defaultBranch == null) defaultBranch = "main";
+
+            Map<?, ?> tree = client.get()
+                    .uri("/repos/{owner}/{repo}/git/trees/{branch}?recursive=1", owner, repo, defaultBranch)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (tree == null || tree.get("tree") == null) return;
+
+            List<?> treeItems = (List<?>) tree.get("tree");
+            List<String> topLevel = new ArrayList<>();
+            for (Object item : treeItems) {
+                if (item instanceof Map<?, ?> treeItem) {
+                    String path = (String) treeItem.get("path");
+                    String type = (String) treeItem.get("type");
+                    if (path != null && !path.contains("/")) {
+                        if ("tree".equals(type)) {
+                            topLevel.add(path + "/");
+                        } else if (path.contains(".") && isImportantFile(path)) {
+                            topLevel.add(path);
+                        }
+                    }
+                }
+            }
+
+            if (!topLevel.isEmpty()) {
+                result.append(LABEL_STRUCTURE).append(String.join(", ", topLevel)).append("\n");
+            }
+        } catch (Exception e) {
+            // 디렉토리 구조 조회 실패 무시
+        }
+    }
+
+    private boolean isImportantFile(String filename) {
+        return IMPORTANT_FILES.contains(filename.toLowerCase());
+    }
+
+    void appendPullRequests(StringBuilder result, String owner, String repo, RestClient client) {
+        try {
+            List<?> prs = client.get()
+                    .uri("/repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page={max}",
+                            owner, repo, githubApiProperties.getMaxPullRequests())
+                    .retrieve()
+                    .body(List.class);
+
+            if (prs == null || prs.isEmpty()) return;
+
+            List<String> prSummaries = new ArrayList<>();
+            for (Object p : prs) {
+                if (p instanceof Map<?, ?> pr) {
+                    String title = (String) pr.get("title");
+                    if (title != null) {
+                        prSummaries.add(title);
+                    }
+                }
+            }
+
+            if (!prSummaries.isEmpty()) {
+                result.append(LABEL_PRS).append(String.join(", ", prSummaries)).append("\n");
+            }
+        } catch (Exception e) {
+            // PR 조회 실패 무시
+        }
+    }
+
+    void appendIssues(StringBuilder result, String owner, String repo, RestClient client) {
+        try {
+            List<?> issues = client.get()
+                    .uri("/repos/{owner}/{repo}/issues?state=closed&sort=updated&direction=desc&per_page={max}",
+                            owner, repo, githubApiProperties.getMaxIssues())
+                    .retrieve()
+                    .body(List.class);
+
+            if (issues == null || issues.isEmpty()) return;
+
+            List<String> issueSummaries = new ArrayList<>();
+            for (Object i : issues) {
+                if (i instanceof Map<?, ?> issue) {
+                    if (issue.get("pull_request") != null) continue;
+                    String title = (String) issue.get("title");
+                    if (title != null) {
+                        issueSummaries.add(title);
+                    }
+                }
+            }
+
+            if (!issueSummaries.isEmpty()) {
+                result.append(LABEL_ISSUES).append(String.join(", ", issueSummaries)).append("\n");
+            }
+        } catch (Exception e) {
+            // 이슈 조회 실패 무시
+        }
+    }
+
     private String extractUsername(String githubUrl) {
         if (githubUrl == null) return null;
         githubUrl = githubUrl.trim().replaceAll("/$", "");
@@ -300,6 +588,23 @@ public class GithubApiClient {
         for (int i = 0; i < parts.length; i++) {
             if (parts[i].equals("github.com") && i + 1 < parts.length) {
                 return parts[i + 1];
+            }
+        }
+        return null;
+    }
+
+    private String extractOwner(String repoUrl) {
+        String[] result = extractOwnerAndRepo(repoUrl);
+        return result != null ? result[0] : null;
+    }
+
+    String[] extractOwnerAndRepo(String repoUrl) {
+        if (repoUrl == null) return null;
+        repoUrl = repoUrl.trim().replaceAll("/$", "").replaceAll("\\.git$", "");
+        String[] parts = repoUrl.split("/");
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].equals("github.com") && i + 2 < parts.length) {
+                return new String[]{parts[i + 1], parts[i + 2]};
             }
         }
         return null;

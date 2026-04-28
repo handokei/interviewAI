@@ -85,10 +85,11 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         CompletableFuture<String> githubFuture = null;
-        if (request.getGithubUrl() != null) {
+        List<String> repoUrls = request.getEffectiveGithubRepoUrls();
+        if (!repoUrls.isEmpty()) {
             String githubToken = user.getGithubAccessToken();
             githubFuture = CompletableFuture.supplyAsync(
-                    () -> githubApiClient.extractGithubInfo(request.getGithubUrl(), githubToken));
+                    () -> githubApiClient.extractRepoAnalysis(repoUrls, githubToken));
         }
 
         String jobPostingContent = joinSafely(crawlFuture, interviewProperties.getCrawlTimeoutSeconds());
@@ -400,10 +401,11 @@ public class InterviewServiceImpl implements InterviewService {
 
     private void validateModeRequirements(InterviewStartRequestDto request) {
         boolean hasDocument = request.getDocumentIds() != null && !request.getDocumentIds().isEmpty();
-        if (request.getMode() == InterviewMode.RESUME && !hasDocument && request.getGithubUrl() == null) {
+        boolean hasGithub = !request.getEffectiveGithubRepoUrls().isEmpty();
+        if (request.getMode() == InterviewMode.RESUME && !hasDocument && !hasGithub) {
             throw new BusinessException(InterviewErrorCode.DOCUMENT_REQUIRED);
         }
-        if (request.getMode() == InterviewMode.COMPANY && !hasDocument && request.getGithubUrl() == null) {
+        if (request.getMode() == InterviewMode.COMPANY && !hasDocument && !hasGithub) {
             throw new BusinessException(InterviewErrorCode.DOCUMENT_REQUIRED);
         }
     }

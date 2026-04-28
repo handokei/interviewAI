@@ -84,6 +84,11 @@ github:
     max-readme-length: 500
     max-languages: 5
     parallel-timeout-seconds: 30
+    max-detail-repos: 3
+    max-commits: 5
+    max-branches: 30
+    max-pull-requests: 5
+    max-issues: 5
 
 encryption:
   secret-key: ${ENCRYPTION_SECRET_KEY}
