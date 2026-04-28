@@ -130,6 +130,8 @@ class InterviewServiceImplTest {
         lenient().when(interviewProperties.getCrawlTimeoutSeconds()).thenReturn(15);
         lenient().when(interviewProperties.getGithubTimeoutSeconds()).thenReturn(30);
 
+        lenient().when(claudeAiClient.summarize(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+
         lenient().when(tokenEstimator.trimHistoryWithPriority(any(), anyInt()))
                 .thenAnswer(inv -> {
                     List<InterviewMessage> msgs = inv.getArgument(0);
