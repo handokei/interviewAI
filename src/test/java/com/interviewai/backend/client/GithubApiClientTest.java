@@ -600,6 +600,42 @@ class GithubApiClientTest {
         assertThat(githubApiClient.formatDate("invalid")).isNull();
     }
 
+    // -----------------------------------------------------------------------
+    // buildClient 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient(null);
+        assertThat(result).isSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_있으면_새_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_있으면_새_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient("gho_test_token");
+        assertThat(result).isNotSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다")
+    void 기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser", null);
+        assertThat(result).contains("testuser");
+    }
+
     @Test
     @DisplayName("기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다")
     void 기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다() {

@@ -87,7 +87,7 @@ public class GithubApiClient {
         return result.toString();
     }
 
-    private RestClient buildClient(String accessToken) {
+    RestClient buildClient(String accessToken) {
         if (accessToken == null) {
             return restClient;
         }

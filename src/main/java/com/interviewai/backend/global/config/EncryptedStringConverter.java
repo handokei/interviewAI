@@ -19,6 +19,7 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SecretKeySpec secretKey;
 
@@ -34,7 +35,7 @@ public class EncryptedStringConverter implements AttributeConverter<String, Stri
         if (attribute == null) return null;
         try {
             byte[] iv = new byte[GCM_IV_LENGTH];
-            new SecureRandom().nextBytes(iv);
+            SECURE_RANDOM.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
