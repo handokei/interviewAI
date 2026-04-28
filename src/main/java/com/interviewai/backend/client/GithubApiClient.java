@@ -415,7 +415,8 @@ public class GithubApiClient {
             }
 
         } catch (Exception e) {
-            detail.append("- ").append(repo).append(": 분석 중 오류 발생\n");
+            log.warn("GitHub 레포 분석 실패 [{}/{}]: {}", owner, repo, e.getMessage());
+            detail.append("- ").append(repo).append(": 접근 불가 (private 레포이거나 존재하지 않는 레포)\n");
         }
 
         return detail.toString();
