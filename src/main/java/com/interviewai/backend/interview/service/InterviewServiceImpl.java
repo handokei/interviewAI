@@ -35,12 +35,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -64,6 +62,8 @@ public class InterviewServiceImpl implements InterviewService {
     private final TokenEstimator tokenEstimator;
     private final ResumeTextSummarizer resumeTextSummarizer;
     private final InterviewProperties interviewProperties;
+    private final Executor sseStreamingExecutor;
+    private final SseEmitterHelper sseEmitterHelper;
 
     @Override
     @Transactional
@@ -139,16 +139,15 @@ public class InterviewServiceImpl implements InterviewService {
 
         String systemPrompt = session.getSystemPrompt();
 
-        SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        executor.execute(() -> {
+        SseEmitter emitter = sseEmitterHelper.createEmitter();
+        sseStreamingExecutor.execute(() -> {
             StringBuilder aiContent = new StringBuilder();
             try {
                 claudeAiClient.streamChat(systemPrompt, List.of(),
                                 "면접을 시작해주세요. 첫 번째 질문을 해주세요.")
                         .doOnNext(token -> {
                             aiContent.append(token);
-                            sendTokenToEmitter(emitter, token);
+                            sseEmitterHelper.sendToken(emitter, token);
                         })
                         .doOnComplete(() -> {
                             try {
@@ -164,7 +163,6 @@ public class InterviewServiceImpl implements InterviewService {
                 emitter.completeWithError(e);
             }
         });
-        executor.shutdown();
         return emitter;
     }
 
@@ -244,15 +242,14 @@ public class InterviewServiceImpl implements InterviewService {
                 .toList();
         String systemPrompt = buildSendMessageSystemPrompt(session, documents, session.getJobPostingContent());
 
-        SseEmitter emitter = new SseEmitter(interviewProperties.getSse().getTimeoutMs());
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        executor.execute(() -> {
+        SseEmitter emitter = sseEmitterHelper.createEmitter();
+        sseStreamingExecutor.execute(() -> {
             StringBuilder aiContent = new StringBuilder();
             try {
                 claudeAiClient.streamChat(systemPrompt, history, request.getContent())
                         .doOnNext(token -> {
                             aiContent.append(token);
-                            sendTokenToEmitter(emitter, token);
+                            sseEmitterHelper.sendToken(emitter, token);
                         })
                         .doOnComplete(() -> {
                             try {
@@ -271,7 +268,6 @@ public class InterviewServiceImpl implements InterviewService {
                 emitter.completeWithError(e);
             }
         });
-        executor.shutdown();
         return emitter;
     }
 
@@ -542,14 +538,6 @@ public class InterviewServiceImpl implements InterviewService {
             sb.append(message.content()).append("\n\n");
         }
         return sb.toString();
-    }
-
-    void sendTokenToEmitter(SseEmitter emitter, String token) {
-        try {
-            emitter.send(SseEmitter.event().data(token));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private InterviewFeedback parseFeedbackAndSave(InterviewSession session, String feedbackJson) {
