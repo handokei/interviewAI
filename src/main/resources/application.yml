@@ -76,6 +76,10 @@ interview:
     summary-enabled: true
   sse:
     timeout-ms: 120000
+    pool:
+      core-size: 4
+      max-size: 8
+      queue-capacity: 50
 
 github:
   api:

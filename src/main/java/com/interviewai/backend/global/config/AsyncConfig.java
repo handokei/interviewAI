@@ -11,6 +11,12 @@ import java.util.concurrent.Executor;
 @EnableAsync
 public class AsyncConfig {
 
+    private final InterviewProperties interviewProperties;
+
+    public AsyncConfig(InterviewProperties interviewProperties) {
+        this.interviewProperties = interviewProperties;
+    }
+
     @Bean("evalExecutor")
     public Executor evalExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -29,6 +35,18 @@ public class AsyncConfig {
         executor.setMaxPoolSize(2);
         executor.setQueueCapacity(20);
         executor.setThreadNamePrefix("summary-");
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean("sseStreamingExecutor")
+    public Executor sseStreamingExecutor() {
+        InterviewProperties.Pool pool = interviewProperties.getSse().getPool();
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(pool.getCoreSize());
+        executor.setMaxPoolSize(pool.getMaxSize());
+        executor.setQueueCapacity(pool.getQueueCapacity());
+        executor.setThreadNamePrefix("sse-stream-");
         executor.initialize();
         return executor;
     }
