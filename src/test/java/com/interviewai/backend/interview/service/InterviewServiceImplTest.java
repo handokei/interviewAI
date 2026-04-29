@@ -36,10 +36,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import reactor.core.publisher.Flux;
@@ -52,7 +52,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -110,6 +109,12 @@ class InterviewServiceImplTest {
     @Mock
     private InterviewProperties interviewProperties;
 
+    @Mock
+    private Executor sseStreamingExecutor;
+
+    @Mock
+    private SseEmitterHelper sseEmitterHelper;
+
     private User testUser;
 
     @BeforeEach
@@ -164,6 +169,13 @@ class InterviewServiceImplTest {
                             .toList();
                 });
         lenient().when(tokenEstimator.estimateTokens(anyString())).thenReturn(100);
+
+        lenient().doAnswer(inv -> {
+            inv.getArgument(0, Runnable.class).run();
+            return null;
+        }).when(sseStreamingExecutor).execute(any(Runnable.class));
+
+        lenient().when(sseEmitterHelper.createEmitter()).thenReturn(new SseEmitter(120_000L));
     }
 
     @Test
@@ -1086,32 +1098,6 @@ class InterviewServiceImplTest {
         assertThatThrownBy(() -> interviewService.streamMessage(userId, sessionId, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("완료");
-    }
-
-    @Test
-    @DisplayName("기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다")
-    void 기능_테스트_sendTokenToEmitter_정상적으로_토큰을_전송한다() throws IOException {
-        // given
-        SseEmitter emitter = mock(SseEmitter.class);
-
-        // when
-        interviewService.sendTokenToEmitter(emitter, "안녕하세요");
-
-        // then
-        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
-    }
-
-    @Test
-    @DisplayName("예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다")
-    void 예외_테스트_sendTokenToEmitter_IOException_발생_시_RuntimeException으로_래핑된다() throws IOException {
-        // given
-        SseEmitter emitter = mock(SseEmitter.class);
-        doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
-
-        // when & then
-        assertThatThrownBy(() -> interviewService.sendTokenToEmitter(emitter, "토큰"))
-                .isInstanceOf(RuntimeException.class)
-                .hasCauseInstanceOf(IOException.class);
     }
 
     @Test
