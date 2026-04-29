@@ -33,5 +33,14 @@ public class InterviewProperties {
     @Setter
     public static class Sse {
         private long timeoutMs = 120_000L;
+        private Pool pool = new Pool();
+    }
+
+    @Getter
+    @Setter
+    public static class Pool {
+        private int coreSize = 4;
+        private int maxSize = 8;
+        private int queueCapacity = 50;
     }
 }
