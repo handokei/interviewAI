@@ -88,8 +88,10 @@ public class InterviewServiceImpl implements InterviewService {
         List<String> repoUrls = request.getEffectiveGithubRepoUrls();
         if (!repoUrls.isEmpty()) {
             String githubToken = user.getGithubAccessToken();
-            githubFuture = CompletableFuture.supplyAsync(
-                    () -> githubApiClient.extractRepoAnalysis(repoUrls, githubToken));
+            githubFuture = CompletableFuture.supplyAsync(() -> {
+                String rawAnalysis = githubApiClient.extractRepoAnalysis(repoUrls, githubToken);
+                return summarizeGithubAnalysis(rawAnalysis);
+            });
         }
 
         String jobPostingContent = joinSafely(crawlFuture, interviewProperties.getCrawlTimeoutSeconds());
@@ -614,6 +616,39 @@ public class InterviewServiceImpl implements InterviewService {
                 .answerLevel(latestAi.getAnswerLevel())
                 .qualityHint(latestAi.getQualityHint())
                 .build();
+    }
+
+    private static final String GITHUB_SUMMARY_PROMPT = """
+            당신은 개발자 채용 면접관입니다. 아래 GitHub 분석 데이터를 읽고,
+            이 지원자에 대해 다음 항목을 각각 한 줄로 평가해주세요.
+
+            1. 커밋 컨벤션: 메시지 품질, 커밋 단위 적절성
+            2. 브랜치 전략: main/dev/feature 분리 여부, 네이밍 체계성
+            3. PR 습관: PR 제목 품질, PR을 통한 머지 실천 여부
+            4. 코드 구조: 패키지/디렉토리 설계, 테스트 코드 존재 여부
+            5. 활동 패턴: 커밋 빈도, 꾸준함
+            6. 이슈 관리: 이슈 생성 후 작업, 이슈-PR 연결 여부
+
+            규칙:
+            - 데이터에서 확인할 수 있는 항목만 작성하세요.
+            - 데이터에 근거가 없는 항목은 작성하지 마세요 (추측 금지).
+            - 각 항목에 판단 근거가 되는 구체적 예시를 포함하세요.
+            - 평가만 작성하고, 다른 설명은 하지 마세요.
+            """;
+
+    private String summarizeGithubAnalysis(String rawAnalysis) {
+        if (rawAnalysis == null || rawAnalysis.isBlank()) {
+            return null;
+        }
+        try {
+            String summary = claudeAiClient.summarize(GITHUB_SUMMARY_PROMPT, rawAnalysis);
+            log.info("GitHub 분석 요약 완료: {}자 → {}자", rawAnalysis.length(),
+                    summary != null ? summary.length() : 0);
+            return summary;
+        } catch (Exception e) {
+            log.warn("GitHub 분석 요약 실패, 원문 사용: {}", e.getMessage());
+            return rawAnalysis;
+        }
     }
 
     private String joinSafely(CompletableFuture<String> future, long timeoutSeconds) {

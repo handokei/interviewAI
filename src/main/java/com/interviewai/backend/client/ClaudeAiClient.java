@@ -73,4 +73,13 @@ public class ClaudeAiClient {
         Prompt prompt = new Prompt(messages);
         return chatModel.call(prompt).getResult().getOutput().getText();
     }
+
+    public String summarize(String systemPrompt, String content) {
+        List<Message> messages = new ArrayList<>();
+        messages.add(new SystemMessage(systemPrompt));
+        messages.add(new UserMessage(content));
+
+        Prompt prompt = new Prompt(messages);
+        return chatModel.call(prompt).getResult().getOutput().getText();
+    }
 }
