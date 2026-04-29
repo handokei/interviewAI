@@ -1369,6 +1369,59 @@ class InterviewServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_startInterview_GitHub_요약_실패시_원문으로_fallback한다")
+    void 기능_테스트_startInterview_GitHub_요약_실패시_원문으로_fallback한다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "githubUrl", "https://github.com/testuser");
+
+        String githubContent = "GitHub 원문 정보입니다.";
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(githubApiClient.extractRepoAnalysis(eq(List.of("https://github.com/testuser")), any())).willReturn(githubContent);
+        given(claudeAiClient.summarize(any(), any())).willThrow(new RuntimeException("AI 요약 실패"));
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(claudeAiClient).summarize(any(), eq(githubContent));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_startInterview_GitHub_수집결과가_빈문자열이면_요약하지_않는다")
+    void 기능_테스트_startInterview_GitHub_수집결과가_빈문자열이면_요약하지_않는다() {
+        // given
+        Long userId = 1L;
+        InterviewStartRequestDto request = new InterviewStartRequestDto();
+        setField(request, "mode", InterviewMode.BASIC);
+        setField(request, "level", InterviewLevel.JUNIOR);
+        setField(request, "githubUrl", "https://github.com/testuser");
+
+        InterviewSession savedSession = InterviewSession.builder()
+                .user(testUser).mode(InterviewMode.BASIC).level(InterviewLevel.JUNIOR).build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(testUser));
+        given(githubApiClient.extractRepoAnalysis(eq(List.of("https://github.com/testuser")), any())).willReturn("");
+        given(interviewSessionRepository.save(any(InterviewSession.class))).willReturn(savedSession);
+
+        // when
+        InterviewStartResponseDto response = interviewService.startInterview(userId, request);
+
+        // then
+        assertThat(response).isNotNull();
+        verify(claudeAiClient, org.mockito.Mockito.never()).summarize(any(), any());
+    }
+
+    @Test
     @DisplayName("기능_테스트_startInterview_jobPostingUrl만_제공되면_crawlFuture만_실행된다")
     void 기능_테스트_startInterview_jobPostingUrl만_제공되면_crawlFuture만_실행된다() {
         // given
