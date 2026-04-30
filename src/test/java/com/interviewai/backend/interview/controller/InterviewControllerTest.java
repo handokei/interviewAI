@@ -107,6 +107,23 @@ class InterviewControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    @DisplayName("예외_테스트_면접_시작_jobTitle_누락_시_400을_반환한다")
+    void 예외_테스트_면접_시작_jobTitle_누락_시_400을_반환한다() throws Exception {
+        String noJobTitle = """
+                {
+                  "mode": "BASIC",
+                  "level": "JUNIOR"
+                }
+                """;
+
+        mockMvc.perform(post("/api/interviews")
+                        .with(authentication(auth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(noJobTitle))
+                .andExpect(status().isBadRequest());
+    }
+
     // -------------------------------------------------------------------------
     // POST /api/interviews/{sessionId}/first-question/stream — streamFirstQuestion
     // -------------------------------------------------------------------------
