@@ -1,5 +1,5 @@
 package com.interviewai.backend.user.enums;
 
 public enum OAuthProvider {
-    GITHUB, GOOGLE
+    GITHUB, GOOGLE, LOCAL
 }

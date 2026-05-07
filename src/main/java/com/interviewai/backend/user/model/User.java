@@ -13,14 +13,13 @@ import java.time.LocalDateTime;
 @Table(name = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@ToString(exclude = {"githubAccessToken"})
+@ToString(exclude = {"githubAccessToken", "password"})
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private String providerId;
 
     @Enumerated(EnumType.STRING)
@@ -34,6 +33,8 @@ public class User {
     private String name;
 
     private String profileImageUrl;
+
+    private String password;
 
     @Convert(converter = com.interviewai.backend.global.config.EncryptedStringConverter.class)
     private String githubAccessToken;
@@ -52,12 +53,13 @@ public class User {
 
     @Builder
     public User(String providerId, OAuthProvider provider, String email, String name,
-                String profileImageUrl, String githubAccessToken, UserRole role) {
+                String profileImageUrl, String password, String githubAccessToken, UserRole role) {
         this.providerId = providerId;
         this.provider = provider;
         this.email = email;
         this.name = name;
         this.profileImageUrl = profileImageUrl;
+        this.password = password;
         this.githubAccessToken = githubAccessToken;
         this.role = role;
     }
