@@ -66,6 +66,17 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_corsConfigurationSource_허용된_헤더가_명시적으로_설정된다")
+    void 기능_테스트_corsConfigurationSource_허용된_헤더가_명시적으로_설정된다() {
+        CorsConfigurationSource source = securityConfig.corsConfigurationSource();
+
+        CorsConfiguration config = ((UrlBasedCorsConfigurationSource) source)
+                .getCorsConfiguration(mockRequest("/api/test"));
+        assertThat(config.getAllowedHeaders())
+                .containsExactlyInAnyOrder("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With");
+    }
+
+    @Test
     @DisplayName("기능_테스트_corsConfigurationSource_credentials_허용이_설정된다")
     void 기능_테스트_corsConfigurationSource_credentials_허용이_설정된다() {
         CorsConfigurationSource source = securityConfig.corsConfigurationSource();
