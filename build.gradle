@@ -1,7 +1,9 @@
 plugins {
 	id 'java'
+	id 'jacoco'
 	id 'org.springframework.boot' version '3.5.0'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id "org.sonarqube" version "7.2.3.7755"
 }
 
 group = 'com.interviewai'
@@ -36,9 +38,17 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
 
-	// Spring AI - Anthropic (Claude)
-	implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
+	// Monitoring
+	implementation 'io.micrometer:micrometer-registry-prometheus'
+
+	// Spring AI - Anthropic (Claude) [주석 처리 - Gemini 전환]
+//	implementation 'org.springframework.ai:spring-ai-anthropic-spring-boot-starter'
+
+	// Spring AI - OpenAI 호환 (Gemini)
+	implementation 'org.springframework.ai:spring-ai-openai-spring-boot-starter'
 
 	// OAuth2
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -47,9 +57,6 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-
-	// AWS S3
-	implementation 'software.amazon.awssdk:s3:2.25.60'
 
 	// PDF 파싱
 	implementation 'org.apache.pdfbox:pdfbox:3.0.2'
@@ -72,8 +79,47 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testRuntimeOnly 'com.h2database:h2'
 }
 
-tasks.named('test') {
+test {
 	useJUnitPlatform()
+	finalizedBy jacocoTestReport
+}
+
+sonar {
+	properties {
+		property "sonar.projectKey", "handokei_interviewAI"
+		property "sonar.organization", "handokei"
+		property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
+		property "sonar.coverage.exclusions", "**/config/oauth/CustomOAuth2UserService.java"
+
+		// Security Hotspot exclusions — 의도된 패턴, 아래 이유로 안전
+		property "sonar.issue.ignore.multicriteria", "e1,e2"
+		// e1: CSRF 비활성화 — SessionCreationPolicy.STATELESS + JWT 헤더 인증, 쿠키 기반 CSRF 공격 불가
+		property "sonar.issue.ignore.multicriteria.e1.ruleKey", "java:S4502"
+		property "sonar.issue.ignore.multicriteria.e1.resourceKey", "**/SecurityConfig.java"
+		// e2: SSRF — http/https scheme 검증 적용, 의도된 채용공고 크롤러
+		property "sonar.issue.ignore.multicriteria.e2.ruleKey", "java:S5144"
+		property "sonar.issue.ignore.multicriteria.e2.resourceKey", "**/JobCrawlerClient.java"
+	}
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+		html.required = true
+	}
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+				'**/security/**',
+				'**/*Application*',
+				'**/dto/**',
+				'**/model/**',
+				'**/enums/**',
+			])
+		}))
+	}
 }

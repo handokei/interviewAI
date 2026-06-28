@@ -1,0 +1,1032 @@
+package com.interviewai.backend.client;
+
+import com.interviewai.backend.global.config.GithubApiProperties;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.RestClient;
+
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@DisplayName("GithubApiClient 테스트")
+@ExtendWith(MockitoExtension.class)
+class GithubApiClientTest {
+
+    @Mock
+    private GithubApiProperties githubApiProperties;
+
+    @Mock
+    private RestClient restClient;
+
+    private GithubApiClient githubApiClient;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(githubApiProperties.getMaxRepos()).thenReturn(10);
+        lenient().when(githubApiProperties.getMaxReadmeLength()).thenReturn(500);
+        lenient().when(githubApiProperties.getMaxLanguages()).thenReturn(5);
+        lenient().when(githubApiProperties.getParallelTimeoutSeconds()).thenReturn(30);
+        lenient().when(githubApiProperties.getMaxDetailRepos()).thenReturn(3);
+        lenient().when(githubApiProperties.getMaxCommits()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxBranches()).thenReturn(30);
+        lenient().when(githubApiProperties.getMaxBranchDisplay()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxPullRequests()).thenReturn(5);
+        lenient().when(githubApiProperties.getMaxIssues()).thenReturn(5);
+        lenient().when(githubApiProperties.getThreadPoolSize()).thenReturn(4);
+        githubApiClient = new GithubApiClient(githubApiProperties, restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_null_URL이면_사용자명_추출_불가_메시지가_반환된다")
+    void 기능_테스트_null_URL이면_사용자명_추출_불가_메시지가_반환된다() {
+        String result = githubApiClient.extractGithubInfo(null);
+
+        assertThat(result).contains("사용자명을 추출할 수 없습니다");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_github_com이_없는_URL이면_사용자명_추출_불가_메시지가_반환된다")
+    void 기능_테스트_github_com이_없는_URL이면_사용자명_추출_불가_메시지가_반환된다() {
+        String result = githubApiClient.extractGithubInfo("https://notgithub.com/user");
+
+        assertThat(result).contains("사용자명을 추출할 수 없습니다");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_유효한_GitHub_URL이면_결과에_사용자명이_포함된다")
+    void 기능_테스트_유효한_GitHub_URL이면_결과에_사용자명이_포함된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("testuser");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_API_호출에서_예외가_발생해도_예외없이_사용자명이_포함된_결과가_반환된다")
+    void 기능_테스트_API_호출에서_예외가_발생해도_예외없이_사용자명이_포함된_결과가_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("연결 실패"));
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("testuser");
+    }
+
+    // -----------------------------------------------------------------------
+    // fetchReadme 단위 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_README가_존재하면_디코딩된_내용이_반환된다")
+    void 기능_테스트_README가_존재하면_디코딩된_내용이_반환된다() {
+        String rawContent = "Hello README";
+        String encoded = Base64.getMimeEncoder().encodeToString(rawContent.getBytes());
+
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
+
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
+
+        assertThat(result).isEqualTo("Hello README");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_README가_없으면_null이_반환된다")
+    void 기능_테스트_README가_없으면_null이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenThrow(new RuntimeException("404 Not Found"));
+
+        String result = githubApiClient.fetchReadme("testuser", "norepo", restClient);
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_README_content_키가_없으면_null이_반환된다")
+    void 기능_테스트_README_content_키가_없으면_null이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("type", "file"));
+
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_API가_null을_반환하면_null이_반환된다")
+    void 기능_테스트_API가_null을_반환하면_null이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_README_내용이_maxReadmeLength를_초과하면_잘라내고_말줄임표가_붙는다")
+    void 기능_테스트_README_내용이_maxReadmeLength를_초과하면_잘라내고_말줄임표가_붙는다() {
+        // maxReadmeLength = 500 (setUp)
+        String longContent = "A".repeat(600);
+        String encoded = Base64.getMimeEncoder().encodeToString(longContent.getBytes());
+
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
+
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
+
+        assertThat(result).endsWith("...");
+        assertThat(result).hasSize(503); // 500 chars + "..."
+    }
+
+    @Test
+    @DisplayName("기능_테스트_README_내용이_maxReadmeLength_이하이면_잘라내지_않는다")
+    void 기능_테스트_README_내용이_maxReadmeLength_이하이면_잘라내지_않는다() {
+        String shortContent = "B".repeat(500);
+        String encoded = Base64.getMimeEncoder().encodeToString(shortContent.getBytes());
+
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("content", encoded));
+
+        String result = githubApiClient.fetchReadme("testuser", "testrepo", restClient);
+
+        assertThat(result).doesNotEndWith("...");
+        assertThat(result).hasSize(500);
+    }
+
+    // -----------------------------------------------------------------------
+    // appendRepositories — 병렬 README 수집 통합 테스트
+    // -----------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    private RestClient.RequestHeadersUriSpec<?> setupMockChain(
+            RestClient.RequestHeadersSpec<?> headersSpec,
+            RestClient.ResponseSpec responseSpec) {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        return uriSpec;
+    }
+
+    @Test
+    @DisplayName("기능_테스트_fork가_아닌_레포는_README가_병렬로_수집되어_결과에_포함된다")
+    void 기능_테스트_fork가_아닌_레포는_README가_병렬로_수집되어_결과에_포함된다() {
+        // user-info response
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 5
+        );
+        String encoded = Base64.getMimeEncoder().encodeToString("My README content".getBytes());
+        Map<String, Object> readmeResponse = Map.of("content", encoded);
+
+        Map<String, Object> repo = Map.of(
+                "name", "my-repo",
+                "description", "A test repo",
+                "stargazers_count", 10,
+                "fork", false
+        );
+
+        // First call: user info, second call: repo list, third call: readme
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of(repo))
+                .thenReturn(readmeResponse);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("my-repo");
+        assertThat(result).contains("README");
+        assertThat(result).contains("My README content");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_fork_레포는_README를_수집하지_않는다")
+    void 기능_테스트_fork_레포는_README를_수집하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 1
+        );
+        Map<String, Object> forkRepo = Map.of(
+                "name", "forked-repo",
+                "stargazers_count", 0,
+                "fork", true
+        );
+
+        // First call: user info, second call: repo list — README must NOT be fetched
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of(forkRepo));
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("forked-repo");
+        // README section should not appear for fork repos
+        assertThat(result).doesNotContain("README");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_레포_목록이_비어있으면_README_수집을_시도하지_않는다")
+    void 기능_테스트_레포_목록이_비어있으면_README_수집을_시도하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 0
+        );
+
+        // First call: user info, second call: empty repo list
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of());
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("testuser");
+        assertThat(result).doesNotContain("주요 레포지토리");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_레포_목록이_null이면_README_수집을_시도하지_않는다")
+    void 기능_테스트_레포_목록이_null이면_README_수집을_시도하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 0
+        );
+
+        // First call: user info, second call: null repo list
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("testuser");
+        assertThat(result).doesNotContain("주요 레포지토리");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_README가_없는_non_fork_레포는_결과에_README_항목이_추가되지_않는다")
+    void 기능_테스트_README가_없는_non_fork_레포는_결과에_README_항목이_추가되지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 1
+        );
+        Map<String, Object> repo = Map.of(
+                "name", "no-readme-repo",
+                "stargazers_count", 2,
+                "fork", false
+        );
+
+        // user info → repo list → null (no README)
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of(repo))
+                .thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("no-readme-repo");
+        assertThat(result).doesNotContain("README");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_레포_목록에_Map이_아닌_원소가_있으면_해당_원소를_건너뛴다")
+    void 기능_테스트_레포_목록에_Map이_아닌_원소가_있으면_해당_원소를_건너뛴다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User",
+                "bio", "Developer",
+                "public_repos", 1
+        );
+
+        // Raw list that includes a non-Map element (String)
+        List<Object> mixedRepos = new java.util.ArrayList<>();
+        mixedRepos.add("not-a-map");
+
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(mixedRepos);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        // Header is appended before the loop, but no repo lines are added
+        assertThat(result).contains("testuser");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_github_com이_마지막_토큰인_URL이면_사용자명_추출_불가_메시지가_반환된다")
+    void 기능_테스트_github_com이_마지막_토큰인_URL이면_사용자명_추출_불가_메시지가_반환된다() {
+        String result = githubApiClient.extractGithubInfo("https://github.com");
+
+        assertThat(result).contains("사용자명을 추출할 수 없습니다");
+    }
+
+    // -----------------------------------------------------------------------
+    // fetchLanguages 단위 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_언어_비율이_정상_반환된다")
+    void 기능_테스트_언어_비율이_정상_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(Map.of("Java", 50000, "Kotlin", 3000));
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
+
+        assertThat(result).containsEntry("Java", 50000L);
+        assertThat(result).containsEntry("Kotlin", 3000L);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_API_실패시_빈_맵이_반환된다")
+    void 기능_테스트_언어_API_실패시_빈_맵이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("API 실패"));
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_API가_null_반환시_빈_맵이_반환된다")
+    void 기능_테스트_언어_API가_null_반환시_빈_맵이_반환된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        Map<String, Long> result = githubApiClient.fetchLanguages("testuser", "testrepo", restClient);
+
+        assertThat(result).isEmpty();
+    }
+
+    // -----------------------------------------------------------------------
+    // 통합 테스트 — 언어, 토픽, 최근 활동 포함
+    // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // appendTopics / appendLanguageBreakdown / appendTechStackSummary / mergeLanguages / formatDate 단위 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_있으면_결과에_포함된다")
+    void 기능_테스트_토픽이_있으면_결과에_포함된다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = new java.util.HashMap<>();
+        repo.put("topics", List.of("spring-boot", "docker", "kubernetes"));
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).contains("토픽: spring-boot, docker, kubernetes");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_없으면_결과에_추가되지_않는다")
+    void 기능_테스트_토픽이_없으면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = new java.util.HashMap<>();
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_토픽이_빈_리스트이면_결과에_추가되지_않는다")
+    void 기능_테스트_토픽이_빈_리스트이면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Object> repo = Map.of("topics", List.of());
+
+        githubApiClient.appendTopics(result, repo);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_비율이_퍼센트로_표시된다")
+    void 기능_테스트_언어_비율이_퍼센트로_표시된다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Long> languages = new java.util.LinkedHashMap<>();
+        languages.put("Java", 70000L);
+        languages.put("Kotlin", 30000L);
+
+        githubApiClient.appendLanguageBreakdown(result, languages);
+
+        assertThat(result.toString()).contains("언어: Java 70%, Kotlin 30%");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_합계가_0이면_결과에_추가되지_않는다")
+    void 기능_테스트_언어_합계가_0이면_결과에_추가되지_않는다() {
+        StringBuilder result = new StringBuilder();
+        Map<String, Long> languages = Map.of("Java", 0L);
+
+        githubApiClient.appendLanguageBreakdown(result, languages);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_기술스택_요약이_레포_섹션_앞에_삽입된다")
+    void 기능_테스트_기술스택_요약이_레포_섹션_앞에_삽입된다() {
+        StringBuilder result = new StringBuilder("주요 레포지토리:\n- repo1\n");
+        Map<String, Long> totalLanguages = new java.util.LinkedHashMap<>();
+        totalLanguages.put("Java", 80000L);
+        totalLanguages.put("Python", 20000L);
+
+        githubApiClient.appendTechStackSummary(result, totalLanguages);
+
+        String output = result.toString();
+        assertThat(output).contains("주요 기술스택: Java (80%), Python (20%)");
+        assertThat(output.indexOf("주요 기술스택")).isLessThan(output.indexOf("주요 레포지토리"));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_빈_언어_맵이면_기술스택_요약이_추가되지_않는다")
+    void 기능_테스트_빈_언어_맵이면_기술스택_요약이_추가되지_않는다() {
+        StringBuilder result = new StringBuilder("주요 레포지토리:\n");
+        Map<String, Long> empty = Map.of();
+
+        githubApiClient.appendTechStackSummary(result, empty);
+
+        assertThat(result.toString()).doesNotContain("주요 기술스택");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_언어_병합이_정상_동작한다")
+    void 기능_테스트_언어_병합이_정상_동작한다() {
+        Map<String, Long> total = new java.util.LinkedHashMap<>();
+        total.put("Java", 50000L);
+
+        githubApiClient.mergeLanguages(total, Map.of("Java", 30000L, "Kotlin", 10000L));
+
+        assertThat(total).containsEntry("Java", 80000L);
+        assertThat(total).containsEntry("Kotlin", 10000L);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_ISO_날짜가_포맷된다")
+    void 기능_테스트_ISO_날짜가_포맷된다() {
+        assertThat(githubApiClient.formatDate("2026-04-25T10:00:00Z")).isEqualTo("2026-04-25");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_null_날짜는_null_반환한다")
+    void 기능_테스트_null_날짜는_null_반환한다() {
+        assertThat(githubApiClient.formatDate(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_잘못된_날짜는_null_반환한다")
+    void 기능_테스트_잘못된_날짜는_null_반환한다() {
+        assertThat(githubApiClient.formatDate("invalid")).isNull();
+    }
+
+    // -----------------------------------------------------------------------
+    // buildClient 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_null이면_기본_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient(null);
+        assertThat(result).isSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_accessToken이_있으면_새_RestClient를_반환한다")
+    void 기능_테스트_accessToken이_있으면_새_RestClient를_반환한다() {
+        lenient().when(githubApiProperties.getBaseUrl()).thenReturn("https://api.github.com");
+        RestClient result = githubApiClient.buildClient("gho_test_token");
+        assertThat(result).isNotSameAs(restClient);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다")
+    void 기능_테스트_extractGithubInfo_토큰_없이_호출_가능하다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser", null);
+        assertThat(result).contains("testuser");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다")
+    void 기능_테스트_레포에_주_언어와_최근_활동_날짜가_포맷된다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> userInfo = Map.of(
+                "name", "Test User", "bio", "Developer", "public_repos", 1);
+
+        Map<String, Object> repo = new java.util.HashMap<>();
+        repo.put("name", "my-project");
+        repo.put("description", "Spring Boot 프로젝트");
+        repo.put("stargazers_count", 5);
+        repo.put("fork", true);
+        repo.put("language", "Java");
+        repo.put("pushed_at", "2026-04-25T10:00:00Z");
+
+        // fork=true이므로 README/Language 병렬 호출 없음 → 순차 mock 가능
+        when(responseSpec.body(any(Class.class)))
+                .thenReturn(userInfo)
+                .thenReturn(List.of(repo));
+
+        String result = githubApiClient.extractGithubInfo("https://github.com/testuser");
+
+        assertThat(result).contains("[Java]");
+        assertThat(result).contains("마지막 활동: 2026-04-25");
+        assertThat(result).contains("설명: Spring Boot 프로젝트");
+    }
+
+    // -----------------------------------------------------------------------
+    // 심화 분석 — extractOwnerAndRepo, extractRepoAnalysis, append* 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_정상_파싱한다")
+    void 기능_테스트_extractOwnerAndRepo_정상_파싱한다() {
+        String[] result = githubApiClient.extractOwnerAndRepo("https://github.com/handokei/interviewAI");
+        assertThat(result).isNotNull();
+        assertThat(result[0]).isEqualTo("handokei");
+        assertThat(result[1]).isEqualTo("interviewAI");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_git_suffix_제거한다")
+    void 기능_테스트_extractOwnerAndRepo_git_suffix_제거한다() {
+        String[] result = githubApiClient.extractOwnerAndRepo("https://github.com/handokei/interviewAI.git");
+        assertThat(result).isNotNull();
+        assertThat(result[1]).isEqualTo("interviewAI");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractOwnerAndRepo_잘못된_URL은_null_반환한다")
+    void 기능_테스트_extractOwnerAndRepo_잘못된_URL은_null_반환한다() {
+        assertThat(githubApiClient.extractOwnerAndRepo("https://github.com/handokei")).isNull();
+        assertThat(githubApiClient.extractOwnerAndRepo(null)).isNull();
+        assertThat(githubApiClient.extractOwnerAndRepo("invalid")).isNull();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractRepoAnalysis_빈_리스트는_빈_문자열_반환한다")
+    void 기능_테스트_extractRepoAnalysis_빈_리스트는_빈_문자열_반환한다() {
+        assertThat(githubApiClient.extractRepoAnalysis(List.of(), null)).isEmpty();
+        assertThat(githubApiClient.extractRepoAnalysis(null, null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendBranches_브랜치_목록을_표시한다")
+    void 기능_테스트_appendBranches_브랜치_목록을_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(
+                List.of(Map.of("name", "main"), Map.of("name", "dev"), Map.of("name", "feat/login"))
+        );
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendBranches(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("브랜치: main, dev, feat/login");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendRecentCommits_커밋_메시지를_표시한다")
+    void 기능_테스트_appendRecentCommits_커밋_메시지를_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> commit = Map.of(
+                "commit", Map.of(
+                        "message", "feat(#1): 로그인 기능 추가",
+                        "author", Map.of("date", "2026-04-28T10:00:00Z")
+                )
+        );
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of(commit));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendRecentCommits(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("feat(#1): 로그인 기능 추가");
+        assertThat(result.toString()).contains("2026-04-28");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendPullRequests_PR_제목을_표시한다")
+    void 기능_테스트_appendPullRequests_PR_제목을_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(
+                List.of(Map.of("title", "feat: 로그인 구현"))
+        );
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendPullRequests(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("PR: feat: 로그인 구현");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendIssues_이슈_제목을_표시하고_PR은_제외한다")
+    void 기능_테스트_appendIssues_이슈_제목을_표시하고_PR은_제외한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> issue = new java.util.HashMap<>();
+        issue.put("title", "버그: 로그인 실패");
+        issue.put("pull_request", null);
+
+        Map<String, Object> prIssue = new java.util.HashMap<>();
+        prIssue.put("title", "feat: PR 제목");
+        prIssue.put("pull_request", Map.of("url", "https://..."));
+
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of(issue, prIssue));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendIssues(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("버그: 로그인 실패");
+        assertThat(result.toString()).doesNotContain("feat: PR 제목");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendDirectoryStructure_1단계_디렉토리를_표시한다")
+    void 기능_테스트_appendDirectoryStructure_1단계_디렉토리를_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        Map<String, Object> tree = Map.of("tree", List.of(
+                Map.of("path", "src", "type", "tree"),
+                Map.of("path", "docs", "type", "tree"),
+                Map.of("path", "build.gradle", "type", "blob"),
+                Map.of("path", "README.md", "type", "blob"),
+                Map.of("path", "src/main", "type", "tree")
+        ));
+        when(responseSpec.body(any(Class.class))).thenReturn(tree);
+
+        Map<String, Object> repoInfo = new java.util.HashMap<>();
+        repoInfo.put("default_branch", "main");
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendDirectoryStructure(result, "owner", "repo", restClient, repoInfo);
+
+        assertThat(result.toString()).contains("src/");
+        assertThat(result.toString()).contains("docs/");
+        assertThat(result.toString()).contains("build.gradle");
+        assertThat(result.toString()).doesNotContain("README.md");
+        assertThat(result.toString()).doesNotContain("src/main");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendBranches_API_실패시_무시한다")
+    void 기능_테스트_appendBranches_API_실패시_무시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenThrow(new RuntimeException("API 실패"));
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendBranches(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).isEmpty();
+    }
+
+    // -----------------------------------------------------------------------
+    // extractRepoAnalysis, buildRepoDetail, destroy 테스트
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("기능_테스트_extractRepoAnalysis_잘못된_URL은_건너뛴다")
+    void 기능_테스트_extractRepoAnalysis_잘못된_URL은_건너뛴다() {
+        String result = githubApiClient.extractRepoAnalysis(
+                List.of("invalid-url", "also-invalid"), null);
+
+        assertThat(result).contains("분석 대상 레포지토리:");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractRepoAnalysis_유효한_URL로_분석을_수행한다")
+    void 기능_테스트_extractRepoAnalysis_유효한_URL로_분석을_수행한다() {
+        when(restClient.get()).thenAnswer(inv -> {
+            RestClient.RequestHeadersUriSpec<?> us = mock(RestClient.RequestHeadersUriSpec.class);
+            when(us.uri(anyString(), any(Object[].class))).thenAnswer(uriInv -> {
+                String uri = uriInv.getArgument(0, String.class);
+                RestClient.RequestHeadersSpec<?> hs = mock(RestClient.RequestHeadersSpec.class);
+                RestClient.ResponseSpec rs = mock(RestClient.ResponseSpec.class);
+                when(hs.retrieve()).thenReturn(rs);
+
+                if (uri.contains("/users/")) {
+                    when(rs.body(any(Class.class))).thenReturn(
+                            Map.of("name", "Test", "bio", "Dev", "public_repos", 1));
+                } else if (uri.equals("/repos/{owner}/{repo}")) {
+                    Map<String, Object> repoInfo = new java.util.HashMap<>();
+                    repoInfo.put("name", "test-repo");
+                    repoInfo.put("stargazers_count", 3);
+                    repoInfo.put("language", "Java");
+                    repoInfo.put("description", "test");
+                    repoInfo.put("default_branch", "main");
+                    repoInfo.put("pushed_at", "2026-04-28T10:00:00Z");
+                    when(rs.body(any(Class.class))).thenReturn(repoInfo);
+                } else {
+                    when(rs.body(any(Class.class))).thenReturn(null);
+                }
+                return hs;
+            });
+            return us;
+        });
+
+        String result = githubApiClient.extractRepoAnalysis(
+                List.of("https://github.com/owner/test-repo"), null);
+
+        assertThat(result).contains("owner");
+        assertThat(result).contains("분석 대상 레포지토리:");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_extractRepoAnalysis_maxDetailRepos_초과시_제한한다")
+    void 기능_테스트_extractRepoAnalysis_maxDetailRepos_초과시_제한한다() {
+        when(githubApiProperties.getMaxDetailRepos()).thenReturn(2);
+
+        when(restClient.get()).thenAnswer(inv -> {
+            RestClient.RequestHeadersUriSpec<?> us = mock(RestClient.RequestHeadersUriSpec.class);
+            when(us.uri(anyString(), any(Object[].class))).thenAnswer(uriInv -> {
+                RestClient.RequestHeadersSpec<?> hs = mock(RestClient.RequestHeadersSpec.class);
+                RestClient.ResponseSpec rs = mock(RestClient.ResponseSpec.class);
+                when(hs.retrieve()).thenReturn(rs);
+                when(rs.body(any(Class.class))).thenReturn(null);
+                return hs;
+            });
+            return us;
+        });
+
+        // 3개 URL 입력하지만 maxDetailRepos=2이므로 2개만 처리
+        String result = githubApiClient.extractRepoAnalysis(
+                List.of("https://github.com/a/r1", "https://github.com/a/r2", "https://github.com/a/r3"),
+                null);
+
+        assertThat(result).contains("분석 대상 레포지토리:");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_destroy_호출시_예외없이_완료된다")
+    void 기능_테스트_destroy_호출시_예외없이_완료된다() {
+        githubApiClient.destroy();
+        // shutdown 호출 후 예외 없으면 성공
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendRecentCommits_빈_응답시_아무것도_추가하지_않는다")
+    void 기능_테스트_appendRecentCommits_빈_응답시_아무것도_추가하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of());
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendRecentCommits(result, "owner", "repo", restClient);
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendPullRequests_빈_응답시_아무것도_추가하지_않는다")
+    void 기능_테스트_appendPullRequests_빈_응답시_아무것도_추가하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of());
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendPullRequests(result, "owner", "repo", restClient);
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendIssues_빈_응답시_아무것도_추가하지_않는다")
+    void 기능_테스트_appendIssues_빈_응답시_아무것도_추가하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(List.of());
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendIssues(result, "owner", "repo", restClient);
+        assertThat(result.toString()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendBranches_6개_이상이면_외_N개를_표시한다")
+    void 기능_테스트_appendBranches_6개_이상이면_외_N개를_표시한다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+
+        List<Map<String, String>> branches = new java.util.ArrayList<>();
+        for (int i = 1; i <= 8; i++) {
+            branches.add(Map.of("name", "branch-" + i));
+        }
+        when(responseSpec.body(any(Class.class))).thenReturn(branches);
+
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendBranches(result, "owner", "repo", restClient);
+
+        assertThat(result.toString()).contains("외 3개");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_appendDirectoryStructure_빈_트리시_아무것도_추가하지_않는다")
+    void 기능_테스트_appendDirectoryStructure_빈_트리시_아무것도_추가하지_않는다() {
+        RestClient.RequestHeadersUriSpec<?> uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.RequestHeadersSpec<?> headersSpec = mock(RestClient.RequestHeadersSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(restClient.get()).thenReturn((RestClient.RequestHeadersUriSpec) uriSpec);
+        when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn((RestClient.RequestHeadersSpec) headersSpec);
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(Class.class))).thenReturn(null);
+
+        Map<String, Object> repoInfo = Map.of("default_branch", "main");
+        StringBuilder result = new StringBuilder();
+        githubApiClient.appendDirectoryStructure(result, "owner", "repo", restClient, repoInfo);
+
+        assertThat(result.toString()).isEmpty();
+    }
+}
