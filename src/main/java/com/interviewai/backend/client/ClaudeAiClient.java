@@ -1,5 +1,7 @@
 package com.interviewai.backend.client;
 
+import com.interviewai.backend.llm.annotation.LlmCalled;
+import com.interviewai.backend.llm.enums.PromptType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 // import org.springframework.ai.anthropic.AnthropicChatModel;  // [주석 처리 - Anthropic API]
@@ -24,6 +26,7 @@ public class ClaudeAiClient {
     // private final AnthropicChatModel chatModel;  // [주석 처리 - Anthropic API]
     private final ChatModel chatModel;
 
+    @LlmCalled(PromptType.INTERVIEWER)
     public String chat(String systemPrompt, List<com.interviewai.backend.client.dto.ChatMessage> history, String userMessage) {
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(systemPrompt));
@@ -65,6 +68,7 @@ public class ClaudeAiClient {
                 .filter(text -> text != null && !text.isEmpty());
     }
 
+    @LlmCalled(PromptType.EVALUATOR)
     public String generateFeedback(String systemPrompt, String conversationText) {
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(systemPrompt));
@@ -74,6 +78,7 @@ public class ClaudeAiClient {
         return chatModel.call(prompt).getResult().getOutput().getText();
     }
 
+    @LlmCalled(PromptType.SUMMARIZER)
     public String summarize(String systemPrompt, String content) {
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(systemPrompt));

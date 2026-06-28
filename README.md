@@ -253,6 +253,30 @@ SSE 스트리밍은 HTTP 스레드를 즉시 반환하고 다른 스레드에서
 타입 안전성을 확보하고 테스트 시 독립적으로 주입할 수 있게 했습니다.
 하드코딩 제거로 환경별 설정 분리도 용이합니다.
 
+## #8 LLM 호출을 운영 system으로 통제 — annotation 기반 자동 metric
+
+LLM 호출은 외부 service에 가까워 token / latency / 실패율 / sanitize 발동 / retry / 비용이
+모두 운영 변수입니다. 호출자 코드에 측정 코드를 흩뿌리는 대신
+`@LlmCalled(PromptType)` annotation + AOP로 metric 책임을 한 곳에 모았습니다.
+
+| 항목 | 호출자 직접 측정 | `@LlmCalled` + AOP |
+|------|------------------|--------------------|
+| 관심사 | LLM 호출 + 측정 코드 혼재 | 호출자는 호출만 |
+| 누락 위험 | 새 호출 추가 시 측정 누락 가능 | annotation만 붙이면 됨 |
+| 시각화 | 분산된 metric 이름 | `/actuator/llm-metrics` 단일 |
+| 단가 추적 | 호출자별 수동 | `CostEstimator`가 모델 단가표 ×token |
+
+**→ 선택: `@LlmCalled` annotation + `LlmCallMetricsAspect`**
+
+- `LlmCallMetricService` — 호출 1건을 받아 `LlmCallLog` 저장 + Micrometer counter 발사 (`llm.call.count`, `llm.call.tokens.input/output`, `llm.call.sanitize.applied`, `llm.call.retry.count`)
+- `LlmCallLog` Entity — 24h aggregation의 SoT. `(createdAt)`, `(promptType, status)` 인덱스로 endpoint 응답 시 인덱스만 스캔
+- `CostEstimator` — Gemini 2.5-Flash 단가표 (`input $0.30 / M tok`, `output $2.50 / M tok`) 기반 호출당 USD 추정
+- `SanitizeDetector` — 응답에 markdown fence / JSON trailing comma 패턴 감지 시 sanitize counter 증가
+- `LlmMetricsEndpoint` — `/actuator/llm-metrics`로 24h snapshot (총 호출 / 실패율 / token 합 / 평균 latency / sanitize 비율 / retry 합 / 비용 합) 노출
+- 예외는 5종(`TIMEOUT` / `RATE_LIMIT` / `SERVER_ERROR` / `PARSE_ERROR` / `OTHER`)으로 자동 분류
+
+> metric 기록 실패는 caller에 전파하지 않습니다. metric 저장이 도메인 flow를 깨면 안 된다는 원칙(REQUIRES_NEW + swallow)이 적용됩니다.
+
 ---
 
 # 📊 성능 비교
