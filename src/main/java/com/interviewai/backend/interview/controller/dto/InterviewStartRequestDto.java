@@ -2,6 +2,7 @@ package com.interviewai.backend.interview.controller.dto;
 
 import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.enums.InterviewMode;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -19,6 +20,7 @@ public class InterviewStartRequestDto {
     @NotNull(message = "면접 레벨은 필수입니다.")
     private InterviewLevel level;
 
+    @NotBlank(message = "직군은 필수입니다.")
     private String jobTitle;
 
     private List<Long> documentIds;
