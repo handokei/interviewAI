@@ -12,4 +12,6 @@ public interface InterviewSessionDocumentRepository extends JpaRepository<Interv
     void deleteBySessionId(Long sessionId);
 
     void deleteAllBySessionIdIn(List<Long> sessionIds);
+
+    void deleteByDocumentId(Long documentId);
 }
