@@ -45,6 +45,17 @@ spring:
         completions-path: /chat/completions
         options:
           model: gemini-2.5-flash
+    # 블로킹 호출(call: chat/generateFeedback/summarize)의 429/5xx 재시도.
+    # Spring AI M6 내장 RetryTemplate은 call()에만 적용되고 stream()에는 적용되지 않는다.
+    # (스트리밍 429/5xx 재시도는 ClaudeAiClient.streamChat의 Reactor retryWhen이 담당)
+    # on-http-codes에 429를 명시해야 4xx가 기본 non-retryable로 분류되는 것을 우회해 재시도된다.
+    retry:
+      max-attempts: 3
+      on-http-codes: [429]
+      backoff:
+        initial-interval: 2s
+        multiplier: 2
+        max-interval: 8s
 
   servlet:
     multipart:

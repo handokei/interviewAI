@@ -123,6 +123,36 @@ class SseEmitterHelperTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_completeWithServiceBusyMessage_안내_메시지_전송_후_정상_종료한다")
+    void 기능_테스트_completeWithServiceBusyMessage_안내_메시지_전송_후_정상_종료한다() throws IOException {
+        SseEmitter emitter = mock(SseEmitter.class);
+
+        sseEmitterHelper.completeWithServiceBusyMessage(emitter, new RuntimeException("429"));
+
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(emitter).complete();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_completeWithServiceBusyMessage_안내_전송_실패_시_오류로_종료한다")
+    void 예외_테스트_completeWithServiceBusyMessage_안내_전송_실패_시_오류로_종료한다() throws IOException {
+        SseEmitter emitter = mock(SseEmitter.class);
+        RuntimeException cause = new RuntimeException("429");
+        doThrow(IOException.class).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        sseEmitterHelper.completeWithServiceBusyMessage(emitter, cause);
+
+        verify(emitter).completeWithError(cause);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_SERVICE_BUSY_MESSAGE_상수가_사용자_안내_문구를_담고_있다")
+    void 기능_테스트_SERVICE_BUSY_MESSAGE_상수가_사용자_안내_문구를_담고_있다() {
+        assertThat(SseEmitterHelper.SERVICE_BUSY_MESSAGE)
+                .isEqualTo("일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    @Test
     @DisplayName("기능_테스트_여러_emitter_콜백_시_메트릭이_정확하다")
     void 기능_테스트_여러_emitter_콜백_시_메트릭이_정확하다() {
         sseEmitterHelper.createEmitter();

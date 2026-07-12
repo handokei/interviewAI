@@ -12,9 +12,15 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -125,5 +131,130 @@ class ClaudeAiClientTest {
 
         List<String> tokens = result.collectList().block();
         assertThat(tokens).containsExactly("안녕", "하세요");
+    }
+
+    private ChatResponse chatResponseOf(String text) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamChat_429_1회_후_성공하면_재시도로_최종_성공한다")
+    void 기능_테스트_streamChat_429_1회_후_성공하면_재시도로_최종_성공한다() {
+        WebClientResponseException tooManyRequests = WebClientResponseException.create(
+                429, "Too Many Requests", HttpHeaders.EMPTY, null, null);
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        // stream()은 조립 시 1회만 호출되고, retryWhen은 반환된 publisher를 재구독한다.
+        // 따라서 구독마다 동작이 달라지도록 defer로 감싼다: 첫 구독은 429, 재구독은 성공.
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.defer(() -> {
+            if (attempts.getAndIncrement() == 0) {
+                return Flux.error(tooManyRequests);
+            }
+            return Flux.just(chatResponseOf("안녕"), chatResponseOf("하세요"));
+        }));
+
+        StepVerifier.withVirtualTime(() ->
+                        claudeAiClient.streamChat("시스템 프롬프트", List.of(), "시작"))
+                .thenAwait(Duration.ofSeconds(30))
+                .expectNext("안녕", "하세요")
+                .verifyComplete();
+
+        assertThat(attempts.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamChat_429가_계속되면_재시도_소진_후_오류로_종료된다")
+    void 예외_테스트_streamChat_429가_계속되면_재시도_소진_후_오류로_종료된다() {
+        WebClientResponseException tooManyRequests = WebClientResponseException.create(
+                429, "Too Many Requests", HttpHeaders.EMPTY, null, null);
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.error(tooManyRequests));
+
+        StepVerifier.withVirtualTime(() ->
+                        claudeAiClient.streamChat("시스템 프롬프트", List.of(), "시작"))
+                .thenAwait(Duration.ofSeconds(60))
+                .expectErrorSatisfies(error ->
+                        assertThat(error).hasMessageContaining("Retries exhausted"))
+                .verify();
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamChat_재시도_대상이_아닌_오류는_즉시_전파된다")
+    void 예외_테스트_streamChat_재시도_대상이_아닌_오류는_즉시_전파된다() {
+        WebClientResponseException badRequest = WebClientResponseException.create(
+                400, "Bad Request", HttpHeaders.EMPTY, null, null);
+        AtomicInteger subscriptions = new AtomicInteger(0);
+        // defer로 감싸 구독 횟수를 측정한다. 재시도 대상이 아니면 재구독이 없어야 한다.
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.defer(() -> {
+            subscriptions.incrementAndGet();
+            return Flux.error(badRequest);
+        }));
+
+        StepVerifier.create(claudeAiClient.streamChat("시스템 프롬프트", List.of(), "시작"))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(WebClientResponseException.class);
+                    assertThat(((WebClientResponseException) error).getStatusCode())
+                            .isEqualTo(HttpStatus.BAD_REQUEST);
+                })
+                .verify();
+
+        // 재시도(재구독) 없이 단 1회만 구독된다
+        assertThat(subscriptions.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("예외_테스트_streamChat_WebClient가_아닌_오류는_재시도하지_않고_즉시_전파된다")
+    void 예외_테스트_streamChat_WebClient가_아닌_오류는_재시도하지_않고_즉시_전파된다() {
+        RuntimeException nonHttpError = new IllegalStateException("파싱 오류");
+        AtomicInteger subscriptions = new AtomicInteger(0);
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.defer(() -> {
+            subscriptions.incrementAndGet();
+            return Flux.error(nonHttpError);
+        }));
+
+        StepVerifier.create(claudeAiClient.streamChat("시스템 프롬프트", List.of(), "시작"))
+                .expectErrorSatisfies(error ->
+                        assertThat(error).isInstanceOf(IllegalStateException.class))
+                .verify();
+
+        assertThat(subscriptions.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamChat_히스토리가_포함된_경우도_토큰을_반환한다")
+    void 기능_테스트_streamChat_히스토리가_포함된_경우도_토큰을_반환한다() {
+        when(chatModel.stream(any(Prompt.class)))
+                .thenReturn(Flux.just(chatResponseOf("응답")));
+
+        List<com.interviewai.backend.client.dto.ChatMessage> history = List.of(
+                new com.interviewai.backend.client.dto.ChatMessage("user", "질문"),
+                new com.interviewai.backend.client.dto.ChatMessage("assistant", "이전 답변")
+        );
+
+        List<String> tokens = claudeAiClient.streamChat("시스템 프롬프트", history, "답변")
+                .collectList().block();
+
+        assertThat(tokens).containsExactly("응답");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamChat_5xx_오류도_재시도_대상이다")
+    void 기능_테스트_streamChat_5xx_오류도_재시도_대상이다() {
+        WebClientResponseException serverError = WebClientResponseException.create(
+                503, "Service Unavailable", HttpHeaders.EMPTY, null, null);
+        AtomicInteger attempts = new AtomicInteger(0);
+        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.defer(() -> {
+            if (attempts.getAndIncrement() == 0) {
+                return Flux.error(serverError);
+            }
+            return Flux.just(chatResponseOf("복구"));
+        }));
+
+        StepVerifier.withVirtualTime(() ->
+                        claudeAiClient.streamChat("시스템 프롬프트", List.of(), "시작"))
+                .thenAwait(Duration.ofSeconds(30))
+                .expectNext("복구")
+                .verifyComplete();
+
+        assertThat(attempts.get()).isEqualTo(2);
     }
 }

@@ -1182,8 +1182,8 @@ class InterviewServiceImplTest {
     }
 
     @Test
-    @DisplayName("기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다")
-    void 기능_테스트_streamMessage_Flux_오류_발생_시_emitter가_오류로_종료된다() throws InterruptedException {
+    @DisplayName("기능_테스트_streamMessage_Flux_오류_발생_시_graceful_degradation_안내가_전송된다")
+    void 기능_테스트_streamMessage_Flux_오류_발생_시_graceful_degradation_안내가_전송된다() throws InterruptedException {
         // given
         Long userId = 1L;
         Long sessionId = 1L;
@@ -1204,8 +1204,9 @@ class InterviewServiceImplTest {
         given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
                 .willReturn(List.of(priorAiMsg, priorUserMsg));
         given(interviewSessionDocumentRepository.findBySessionId(sessionId)).willReturn(List.of());
+        RuntimeException streamError = new RuntimeException("스트림 오류");
         given(claudeAiClient.streamChat(any(), any(), any()))
-                .willReturn(Flux.error(new RuntimeException("스트림 오류")));
+                .willReturn(Flux.error(streamError));
 
         // when
         org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
@@ -1214,6 +1215,37 @@ class InterviewServiceImplTest {
         // then
         Thread.sleep(200);
         assertThat(emitter).isNotNull();
+        // 조용히 종료하지 않고 graceful degradation 안내 경로를 탄다
+        verify(sseEmitterHelper).completeWithServiceBusyMessage(any(), eq(streamError));
+    }
+
+    @Test
+    @DisplayName("기능_테스트_streamFirstQuestion_Flux_오류_발생_시_graceful_degradation_안내가_전송된다")
+    void 기능_테스트_streamFirstQuestion_Flux_오류_발생_시_graceful_degradation_안내가_전송된다() throws InterruptedException {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.existsBySessionIdAndRole(sessionId, MessageRole.AI)).willReturn(false);
+        RuntimeException streamError = new RuntimeException("429 Too Many Requests");
+        given(claudeAiClient.streamChat(any(), any(), any()))
+                .willReturn(Flux.error(streamError));
+
+        // when
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                interviewService.streamFirstQuestion(userId, sessionId);
+
+        // then
+        Thread.sleep(200);
+        assertThat(emitter).isNotNull();
+        verify(sseEmitterHelper).completeWithServiceBusyMessage(any(), eq(streamError));
     }
 
     @Test
