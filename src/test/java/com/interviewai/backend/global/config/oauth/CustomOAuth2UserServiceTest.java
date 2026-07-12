@@ -5,8 +5,13 @@ import com.interviewai.backend.user.enums.UserRole;
 import com.interviewai.backend.user.model.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("CustomOAuth2UserService 토큰 저장 로직 테스트")
 class CustomOAuth2UserServiceTest {
@@ -76,5 +81,15 @@ class CustomOAuth2UserServiceTest {
 
         user.updateGithubAccessToken("newer_token");
         assertThat(user.getGithubAccessToken()).isEqualTo("newer_token");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_LOCAL_provider로_OAuth2_사용자_정보를_해석하면_예외가_발생한다")
+    void 예외_테스트_LOCAL_provider로_OAuth2_사용자_정보를_해석하면_예외가_발생한다() {
+        CustomOAuth2UserService service = new CustomOAuth2UserService(null);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                service, "resolveOAuth2UserInfo", OAuthProvider.LOCAL, Map.<String, Object>of()))
+                .isInstanceOf(OAuth2AuthenticationException.class);
     }
 }
