@@ -9,6 +9,7 @@ import com.interviewai.backend.interview.enums.MessageRole;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
+import com.interviewai.backend.llm.service.LlmJsonSanitizer;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;
 import com.interviewai.backend.user.model.User;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -50,6 +52,9 @@ class InterviewEvaluationServiceTest {
 
     @Mock
     private InterviewProperties interviewProperties;
+
+    @Spy
+    private LlmJsonSanitizer llmJsonSanitizer = new LlmJsonSanitizer();
 
     private User testUser;
 
@@ -441,5 +446,118 @@ class InterviewEvaluationServiceTest {
         // then — 예외 없이 종료되었는지 확인
         org.mockito.Mockito.verify(interviewMessageRepository,
                 org.mockito.Mockito.times(2)).findById(aiMessageId);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateWithAi_1차_파싱_성공시_재호출_없이_1회만_호출한다")
+    void 기능_테스트_evaluateWithAi_1차_파싱_성공시_재호출_없이_1회만_호출한다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋습니다.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then — LLM 1회만 호출, 정상 파싱
+        verify(claudeAiClient, org.mockito.Mockito.times(1)).chat(any(), any(), any());
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(eval.suggestFinish()).isTrue();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateWithAi_1차_파싱_실패시_LLM을_재호출하여_2차_결과를_반환한다")
+    void 기능_테스트_evaluateWithAi_1차_파싱_실패시_LLM을_재호출하여_2차_결과를_반환한다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("파싱 불가능한 산문 응답")
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"PASS\",\"qualityHint\":\"재시도 성공.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then — LLM 2회 호출, 2차 결과로 파싱
+        verify(claudeAiClient, org.mockito.Mockito.times(2)).chat(any(), any(), any());
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(eval.qualityHint()).isEqualTo("재시도 성공.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateWithAi_1차_2차_모두_파싱_실패시_fallback을_반환한다")
+    void 기능_테스트_evaluateWithAi_1차_2차_모두_파싱_실패시_fallback을_반환한다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("파싱 불가 1")
+                .willReturn("파싱 불가 2");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then — 정확히 2회 호출 후 fallback (3회 이상 재시도하지 않음)
+        verify(claudeAiClient, org.mockito.Mockito.times(2)).chat(any(), any(), any());
+        assertThat(eval.suggestFinish()).isFalse();
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(eval.qualityHint()).isEqualTo("답변이 접수되었습니다.");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateWithAi_1차_응답이_빈문자열이면_sanitize가_empty를_내고_재호출한다")
+    void 기능_테스트_evaluateWithAi_1차_응답이_빈문자열이면_sanitize가_empty를_내고_재호출한다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("")
+                .willReturn("{\"suggestFinish\":false,\"answerLevel\":\"PASS\",\"qualityHint\":\"재시도.\"}");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then — 빈 응답도 파싱 실패로 간주되어 재호출됨
+        verify(claudeAiClient, org.mockito.Mockito.times(2)).chat(any(), any(), any());
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_evaluateWithAi_markdown_fence로_감싼_응답도_sanitize_후_1회에_파싱한다")
+    void 기능_테스트_evaluateWithAi_markdown_fence로_감싼_응답도_sanitize_후_1회에_파싱한다() {
+        // given
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(claudeAiClient.chat(any(), any(), any()))
+                .willReturn("```json\n{\"suggestFinish\":true,\"answerLevel\":\"PASS\",\"qualityHint\":\"좋아요\",}\n```");
+
+        // when
+        InterviewEvaluation eval = interviewEvaluationService.evaluateWithAi(session, List.of(), "AI 응답");
+
+        // then — fence/trailing comma가 sanitize되어 재호출 없이 파싱됨
+        verify(claudeAiClient, org.mockito.Mockito.times(1)).chat(any(), any(), any());
+        assertThat(eval.answerLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(eval.suggestFinish()).isTrue();
     }
 }
