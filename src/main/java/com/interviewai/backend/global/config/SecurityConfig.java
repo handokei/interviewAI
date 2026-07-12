@@ -15,6 +15,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -38,12 +39,22 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicy(permissions -> permissions
+                                .policy("camera=(), microphone=(), geolocation=()"))
+                )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/api-docs/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/prometheus").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2
@@ -66,7 +77,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(corsProperties.getAllowedOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

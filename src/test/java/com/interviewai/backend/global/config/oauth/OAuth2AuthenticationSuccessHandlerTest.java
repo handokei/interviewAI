@@ -1,5 +1,8 @@
 package com.interviewai.backend.global.config.oauth;
 
+import com.interviewai.backend.auth.model.RefreshToken;
+import com.interviewai.backend.auth.repository.RefreshTokenRepository;
+import com.interviewai.backend.global.config.JwtProperties;
 import com.interviewai.backend.global.config.jwt.JwtProvider;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;
@@ -32,6 +35,12 @@ class OAuth2AuthenticationSuccessHandlerTest {
     private JwtProvider jwtProvider;
 
     @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Mock
+    private JwtProperties jwtProperties;
+
+    @Mock
     private HttpServletRequest request;
 
     @Mock
@@ -44,7 +53,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new OAuth2AuthenticationSuccessHandler(jwtProvider);
+        handler = new OAuth2AuthenticationSuccessHandler(jwtProvider, refreshTokenRepository, jwtProperties);
         ReflectionTestUtils.setField(handler, "frontendUrl", "http://localhost:5173");
     }
 
@@ -63,6 +72,8 @@ class OAuth2AuthenticationSuccessHandlerTest {
         when(authentication.getPrincipal()).thenReturn(oAuth2User);
         when(jwtProvider.generateAccessToken(any(), any())).thenReturn("test-access-token");
         when(jwtProvider.generateRefreshToken(any())).thenReturn("test-refresh-token");
+        when(jwtProperties.getRefreshExpiration()).thenReturn(604800000L);
+        when(refreshTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(response.encodeRedirectURL(any())).thenAnswer(inv -> inv.getArgument(0));
 
         handler.onAuthenticationSuccess(request, response, authentication);
@@ -74,5 +85,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
                 .contains("http://localhost:5173/auth/callback")
                 .contains("accessToken=test-access-token")
                 .contains("refreshToken=test-refresh-token");
+        verify(refreshTokenRepository).deleteAllByUserId(any());
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 }
