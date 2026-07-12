@@ -5,8 +5,14 @@ import com.interviewai.backend.user.enums.UserRole;
 import com.interviewai.backend.user.model.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("CustomOAuth2UserService 토큰 저장 로직 테스트")
 class CustomOAuth2UserServiceTest {
@@ -76,5 +82,18 @@ class CustomOAuth2UserServiceTest {
 
         user.updateGithubAccessToken("newer_token");
         assertThat(user.getGithubAccessToken()).isEqualTo("newer_token");
+    }
+
+    @Test
+    @DisplayName("예외_테스트_LOCAL_provider로_OAuth2_로그인_시도_시_예외가_발생한다")
+    void 예외_테스트_LOCAL_provider로_OAuth2_로그인_시도_시_예외가_발생한다() throws Exception {
+        CustomOAuth2UserService service = new CustomOAuth2UserService(null);
+        Method resolve = CustomOAuth2UserService.class.getDeclaredMethod(
+                "resolveOAuth2UserInfo", OAuthProvider.class, Map.class);
+        resolve.setAccessible(true);
+
+        assertThatThrownBy(() -> resolve.invoke(service, OAuthProvider.LOCAL, Map.of()))
+                .isInstanceOf(InvocationTargetException.class)
+                .hasCauseInstanceOf(OAuth2AuthenticationException.class);
     }
 }

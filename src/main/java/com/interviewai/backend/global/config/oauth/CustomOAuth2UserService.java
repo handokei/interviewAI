@@ -62,6 +62,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         return switch (provider) {
             case GITHUB -> new GithubOAuth2UserInfo(attributes);
             case GOOGLE -> new GoogleOAuth2UserInfo(attributes);
+            case LOCAL -> throw new OAuth2AuthenticationException("LOCAL provider는 OAuth2 로그인을 지원하지 않습니다.");
         };
     }
 }
