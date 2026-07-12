@@ -15,6 +15,7 @@ import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.List;
 
@@ -104,5 +105,44 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_WebClientResponseException_429_처리_시_TOO_MANY_REQUESTS와_LLM_RATE_LIMITED가_반환된다")
+    void 기능_테스트_WebClientResponseException_429_처리_시_TOO_MANY_REQUESTS와_LLM_RATE_LIMITED가_반환된다() {
+        WebClientResponseException ex = WebClientResponseException.create(
+                429, "Too Many Requests", null, null, null);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleWebClientResponseException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(response.getBody().getCode()).isEqualTo("I010");
+        assertThat(response.getBody().isSuccess()).isFalse();
+    }
+
+    @Test
+    @DisplayName("기능_테스트_WebClientResponseException_TooManyRequests_서브타입_처리_시_429가_반환된다")
+    void 기능_테스트_WebClientResponseException_TooManyRequests_서브타입_처리_시_429가_반환된다() {
+        // create()는 429에 대해 TooManyRequests 서브타입 인스턴스를 반환한다
+        WebClientResponseException ex = WebClientResponseException.create(
+                429, "Too Many Requests", null, null, null);
+        assertThat(ex).isInstanceOf(WebClientResponseException.TooManyRequests.class);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleWebClientResponseException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(response.getBody().getCode()).isEqualTo("I010");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_WebClientResponseException_5xx_처리_시_BAD_GATEWAY와_LLM_UPSTREAM_ERROR가_반환된다")
+    void 기능_테스트_WebClientResponseException_5xx_처리_시_BAD_GATEWAY와_LLM_UPSTREAM_ERROR가_반환된다() {
+        WebClientResponseException ex = WebClientResponseException.create(
+                503, "Service Unavailable", null, null, null);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleWebClientResponseException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(response.getBody().getCode()).isEqualTo("I011");
     }
 }

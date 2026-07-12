@@ -160,7 +160,7 @@ public class InterviewServiceImpl implements InterviewService {
                                 emitter.completeWithError(e);
                             }
                         })
-                        .doOnError(emitter::completeWithError)
+                        .doOnError(e -> sseEmitterHelper.completeWithServiceBusyMessage(emitter, e))
                         .subscribe();
             } catch (Exception e) {
                 emitter.completeWithError(e);
@@ -265,7 +265,7 @@ public class InterviewServiceImpl implements InterviewService {
                                 emitter.completeWithError(e);
                             }
                         })
-                        .doOnError(emitter::completeWithError)
+                        .doOnError(e -> sseEmitterHelper.completeWithServiceBusyMessage(emitter, e))
                         .subscribe();
             } catch (Exception e) {
                 emitter.completeWithError(e);
