@@ -8,6 +8,7 @@ import com.interviewai.backend.document.enums.DocumentErrorCode;
 import com.interviewai.backend.document.enums.DocumentType;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
+import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.user.enums.UserErrorCode;
 import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.global.config.InterviewProperties;
@@ -28,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentServiceImpl implements DocumentService {
 
     private final UserDocumentRepository userDocumentRepository;
+    private final InterviewSessionDocumentRepository interviewSessionDocumentRepository;
     private final UserRepository userRepository;
     private final PdfParserClient pdfParserClient;
     private final InterviewProperties interviewProperties;
@@ -76,6 +78,10 @@ public class DocumentServiceImpl implements DocumentService {
     public void deleteDocument(Long userId, Long documentId) {
         UserDocument document = userDocumentRepository.findByIdAndUserId(documentId, userId)
                 .orElseThrow(() -> new BusinessException(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 과거 면접에 사용된 문서는 interview_session_documents에 링크 행이 남아 FK 위반이 발생하므로 먼저 unlink 한다.
+        // 면접 세션/피드백은 삭제하지 않는다 (systemPrompt가 세션에 baked 되어 있어 과거 면접은 그대로 보존).
+        interviewSessionDocumentRepository.deleteByDocumentId(documentId);
 
         userDocumentRepository.delete(document);
     }

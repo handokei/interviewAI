@@ -8,6 +8,7 @@ import com.interviewai.backend.document.enums.DocumentErrorCode;
 import com.interviewai.backend.document.enums.DocumentType;
 import com.interviewai.backend.document.model.UserDocument;
 import com.interviewai.backend.document.repository.UserDocumentRepository;
+import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;
 import com.interviewai.backend.user.model.User;
@@ -35,8 +36,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import org.mockito.InOrder;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceImplTest {
@@ -46,6 +50,9 @@ class DocumentServiceImplTest {
 
     @Mock
     private UserDocumentRepository userDocumentRepository;
+
+    @Mock
+    private InterviewSessionDocumentRepository interviewSessionDocumentRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -221,6 +228,31 @@ class DocumentServiceImplTest {
     }
 
     @Test
+    @DisplayName("기능_테스트_면접에_사용된_문서를_삭제하면_링크를_먼저_unlink한_뒤_삭제한다")
+    void 기능_테스트_면접에_사용된_문서를_삭제하면_링크를_먼저_unlink한_뒤_삭제한다() {
+        // given
+        Long userId = 1L;
+        Long documentId = 1L;
+
+        UserDocument document = UserDocument.builder()
+                .user(testUser)
+                .documentType(DocumentType.RESUME)
+                .originalFileName("resume.pdf")
+                .parsedText("이력서 내용")
+                .build();
+
+        given(userDocumentRepository.findByIdAndUserId(documentId, userId)).willReturn(Optional.of(document));
+
+        // when
+        documentService.deleteDocument(userId, documentId);
+
+        // then — FK 위반 방지를 위해 링크 unlink가 문서 삭제보다 먼저 일어나야 한다
+        InOrder inOrder = inOrder(interviewSessionDocumentRepository, userDocumentRepository);
+        inOrder.verify(interviewSessionDocumentRepository).deleteByDocumentId(documentId);
+        inOrder.verify(userDocumentRepository).delete(document);
+    }
+
+    @Test
     @DisplayName("예외_테스트_존재하지_않는_문서를_삭제하면_예외가_발생한다")
     void 예외_테스트_존재하지_않는_문서를_삭제하면_예외가_발생한다() {
         // given
@@ -234,6 +266,9 @@ class DocumentServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
                         .isEqualTo(DocumentErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 소유권 검증 실패 시 unlink/delete는 일어나지 않아야 한다
+        verifyNoInteractions(interviewSessionDocumentRepository);
     }
 
     @Test
