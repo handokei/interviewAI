@@ -137,6 +137,8 @@ class AuthServiceImplTest {
         given(userRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(jwtProvider.generateAccessToken(any(), any())).willReturn("access.token");
         given(jwtProvider.generateRefreshToken(any())).willReturn("refresh.token");
+        given(jwtProperties.getRefreshExpiration()).willReturn(604800000L);
+        given(refreshTokenRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
 
         // when
         AuthTokenServiceDto result = authService.signup(email, password, password, name);
@@ -144,6 +146,7 @@ class AuthServiceImplTest {
         // then
         assertThat(result.getAccessToken()).isEqualTo("access.token");
         assertThat(result.getRefreshToken()).isEqualTo("refresh.token");
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
@@ -193,6 +196,8 @@ class AuthServiceImplTest {
         given(passwordEncoder.matches(password, "encoded_password")).willReturn(true);
         given(jwtProvider.generateAccessToken(any(), any())).willReturn("access.token");
         given(jwtProvider.generateRefreshToken(any())).willReturn("refresh.token");
+        given(jwtProperties.getRefreshExpiration()).willReturn(604800000L);
+        given(refreshTokenRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
 
         // when
         AuthTokenServiceDto result = authService.login(email, password);
@@ -200,6 +205,7 @@ class AuthServiceImplTest {
         // then
         assertThat(result.getAccessToken()).isEqualTo("access.token");
         assertThat(result.getRefreshToken()).isEqualTo("refresh.token");
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
