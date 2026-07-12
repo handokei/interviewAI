@@ -24,6 +24,7 @@ import com.interviewai.backend.interview.repository.InterviewFeedbackRepository;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionRepository;
+import com.interviewai.backend.llm.service.LlmJsonSanitizer;
 import com.interviewai.backend.user.enums.UserErrorCode;
 import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.user.repository.UserRepository;
@@ -37,6 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -64,6 +66,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewProperties interviewProperties;
     private final Executor sseStreamingExecutor;
     private final SseEmitterHelper sseEmitterHelper;
+    private final LlmJsonSanitizer llmJsonSanitizer;
 
     @Override
     @Transactional
@@ -297,9 +300,20 @@ public class InterviewServiceImpl implements InterviewService {
         }
 
         String feedbackSystemPrompt = buildFeedbackSystemPrompt(session);
-        String feedbackJson = claudeAiClient.generateFeedback(feedbackSystemPrompt, conversationText);
 
-        InterviewFeedback feedback = parseFeedbackAndSave(session, feedbackJson);
+        // 1차 호출 → sanitize → parse. 실패 시 정확히 1회만 재호출한다 (총 LLM 호출 최대 2회).
+        // retry는 별도 @LlmCalled generateFeedback() 호출이므로 LlmCallLog에 별도 row로 관측된다.
+        String feedbackJson = claudeAiClient.generateFeedback(feedbackSystemPrompt, conversationText);
+        Optional<ParsedFeedback> parsed = tryParseFeedback(feedbackJson);
+        if (parsed.isEmpty()) {
+            log.warn("피드백 JSON parse 실패 — LLM 재호출 1회 시도");
+            feedbackJson = claudeAiClient.generateFeedback(feedbackSystemPrompt, conversationText);
+            parsed = tryParseFeedback(feedbackJson);
+        }
+
+        String rawFeedbackJson = feedbackJson;
+        InterviewFeedback feedback = saveFeedback(session,
+                parsed.orElseGet(() -> ParsedFeedback.fallback(rawFeedbackJson)));
         return InterviewFeedbackResponseDto.from(feedback);
     }
 
@@ -540,40 +554,49 @@ public class InterviewServiceImpl implements InterviewService {
         return sb.toString();
     }
 
-    private InterviewFeedback parseFeedbackAndSave(InterviewSession session, String feedbackJson) {
-        AnswerLevel overallLevel = AnswerLevel.NEEDS_IMPROVEMENT;
-        String strengths = "분석 중...";
-        String improvements = "분석 중...";
-        String fullReport = feedbackJson;
+    /** 피드백 JSON 파싱 결과 필드 묶음. 파싱 실패 시 원본 텍스트 기반 fallback을 제공한다. */
+    private record ParsedFeedback(AnswerLevel overallLevel, String strengths, String improvements, String fullReport) {
+        static ParsedFeedback fallback(String rawFeedbackJson) {
+            return new ParsedFeedback(AnswerLevel.NEEDS_IMPROVEMENT, "분석 중...", "분석 중...", rawFeedbackJson);
+        }
+    }
 
+    /**
+     * 원본 LLM 응답을 sanitize 후 파싱한다. 파싱 성공 시에만 값을 담아 반환하고,
+     * 실패 시 {@link Optional#empty()}를 반환하여 caller가 retry/fallback을 결정하게 한다.
+     */
+    private Optional<ParsedFeedback> tryParseFeedback(String feedbackJson) {
+        String jsonStr = llmJsonSanitizer.sanitize(feedbackJson);
+        if (jsonStr.isEmpty()) {
+            return Optional.empty();
+        }
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String jsonStr = feedbackJson;
-            int jsonStart = jsonStr.indexOf('{');
-            int jsonEnd = jsonStr.lastIndexOf('}');
-            if (jsonStart >= 0 && jsonEnd >= 0) {
-                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
-                String levelStr = node.has("overallLevel") ? node.get("overallLevel").asText() : "NEEDS_IMPROVEMENT";
-                try {
-                    overallLevel = AnswerLevel.valueOf(levelStr);
-                } catch (IllegalArgumentException ex) {
-                    overallLevel = AnswerLevel.NEEDS_IMPROVEMENT;
-                }
-                strengths = node.has("strengths") ? node.get("strengths").asText() : strengths;
-                improvements = node.has("improvements") ? node.get("improvements").asText() : improvements;
-                fullReport = node.has("fullReport") ? node.get("fullReport").asText() : feedbackJson;
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
+            String levelStr = node.has("overallLevel") ? node.get("overallLevel").asText() : "NEEDS_IMPROVEMENT";
+            AnswerLevel overallLevel;
+            try {
+                overallLevel = AnswerLevel.valueOf(levelStr);
+            } catch (IllegalArgumentException ex) {
+                overallLevel = AnswerLevel.NEEDS_IMPROVEMENT;
             }
+            String strengths = node.has("strengths") ? node.get("strengths").asText() : "분석 중...";
+            String improvements = node.has("improvements") ? node.get("improvements").asText() : "분석 중...";
+            String fullReport = node.has("fullReport") ? node.get("fullReport").asText() : feedbackJson;
+            return Optional.of(new ParsedFeedback(overallLevel, strengths, improvements, fullReport));
         } catch (Exception e) {
             log.warn("피드백 JSON 파싱 실패, 원본 텍스트 사용: {}", e.getMessage());
+            return Optional.empty();
         }
+    }
 
+    private InterviewFeedback saveFeedback(InterviewSession session, ParsedFeedback parsed) {
         InterviewFeedback feedback = InterviewFeedback.builder()
                 .session(session)
-                .overallLevel(overallLevel)
-                .strengths(strengths)
-                .improvements(improvements)
-                .fullReport(fullReport)
+                .overallLevel(parsed.overallLevel())
+                .strengths(parsed.strengths())
+                .improvements(parsed.improvements())
+                .fullReport(parsed.fullReport())
                 .build();
 
         return interviewFeedbackRepository.save(feedback);

@@ -8,6 +8,7 @@ import com.interviewai.backend.interview.enums.InterviewLevel;
 import com.interviewai.backend.interview.model.InterviewMessage;
 import com.interviewai.backend.interview.model.InterviewSession;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
+import com.interviewai.backend.llm.service.LlmJsonSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -25,6 +27,7 @@ public class InterviewEvaluationService {
     private final ClaudeAiClient claudeAiClient;
     private final TokenEstimator tokenEstimator;
     private final InterviewProperties interviewProperties;
+    private final LlmJsonSanitizer llmJsonSanitizer;
 
     @Async("evalExecutor")
     @Transactional
@@ -46,8 +49,18 @@ public class InterviewEvaluationService {
 
     InterviewEvaluation evaluateWithAi(InterviewSession session, List<ChatMessage> history, String aiResponse) {
         String evalPrompt = buildEvalPrompt(session, history, aiResponse);
-        String evalJson = claudeAiClient.chat(evalPrompt, List.of(), "위 지시에 따라 JSON으로만 응답해주세요.");
-        return parseEvaluation(evalJson);
+        String userInstruction = "위 지시에 따라 JSON으로만 응답해주세요.";
+
+        // 1차 호출 → sanitize → parse. 실패 시 정확히 1회만 재호출한다 (총 LLM 호출 최대 2회).
+        // retry는 별도 @LlmCalled chat() 호출이므로 LlmCallLog에 별도 row로 관측된다.
+        String evalJson = claudeAiClient.chat(evalPrompt, List.of(), userInstruction);
+        Optional<InterviewEvaluation> parsed = tryParseEvaluation(evalJson);
+        if (parsed.isEmpty()) {
+            log.warn("평가 JSON parse 실패 — LLM 재호출 1회 시도");
+            String retryJson = claudeAiClient.chat(evalPrompt, List.of(), userInstruction);
+            parsed = tryParseEvaluation(retryJson);
+        }
+        return parsed.orElseGet(InterviewEvaluation::fallback);
     }
 
     private String buildEvalPrompt(InterviewSession session, List<ChatMessage> history, String aiResponse) {
@@ -97,28 +110,34 @@ public class InterviewEvaluationService {
     }
 
     InterviewEvaluation parseEvaluation(String evalJson) {
+        return tryParseEvaluation(evalJson).orElseGet(InterviewEvaluation::fallback);
+    }
+
+    /**
+     * 원본 LLM 응답을 sanitize 후 파싱한다. 파싱 성공 시에만 값을 담아 반환하고,
+     * 실패 시 {@link Optional#empty()}를 반환하여 caller가 retry/fallback을 결정하게 한다.
+     */
+    private Optional<InterviewEvaluation> tryParseEvaluation(String evalJson) {
+        String jsonStr = llmJsonSanitizer.sanitize(evalJson);
+        if (jsonStr.isEmpty()) {
+            return Optional.empty();
+        }
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String jsonStr = evalJson;
-            int jsonStart = jsonStr.indexOf('{');
-            int jsonEnd = jsonStr.lastIndexOf('}');
-            if (jsonStart >= 0 && jsonEnd >= 0) {
-                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
-                boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
-                String levelStr = node.has("answerLevel") ? node.get("answerLevel").asText() : "NEEDS_IMPROVEMENT";
-                AnswerLevel answerLevel;
-                try {
-                    answerLevel = AnswerLevel.valueOf(levelStr);
-                } catch (IllegalArgumentException ex) {
-                    answerLevel = AnswerLevel.NEEDS_IMPROVEMENT;
-                }
-                String qualityHint = node.has("qualityHint") ? node.get("qualityHint").asText() : "답변이 접수되었습니다.";
-                return new InterviewEvaluation(suggestFinish, answerLevel, qualityHint);
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(jsonStr);
+            boolean suggestFinish = node.has("suggestFinish") && node.get("suggestFinish").asBoolean(false);
+            String levelStr = node.has("answerLevel") ? node.get("answerLevel").asText() : "NEEDS_IMPROVEMENT";
+            AnswerLevel answerLevel;
+            try {
+                answerLevel = AnswerLevel.valueOf(levelStr);
+            } catch (IllegalArgumentException ex) {
+                answerLevel = AnswerLevel.NEEDS_IMPROVEMENT;
             }
+            String qualityHint = node.has("qualityHint") ? node.get("qualityHint").asText() : "답변이 접수되었습니다.";
+            return Optional.of(new InterviewEvaluation(suggestFinish, answerLevel, qualityHint));
         } catch (Exception e) {
             log.warn("평가 JSON 파싱 실패, fallback 사용: {}", e.getMessage());
+            return Optional.empty();
         }
-        return InterviewEvaluation.fallback();
     }
 }

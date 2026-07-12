@@ -18,6 +18,7 @@ import com.interviewai.backend.interview.repository.InterviewFeedbackRepository;
 import com.interviewai.backend.interview.repository.InterviewMessageRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionDocumentRepository;
 import com.interviewai.backend.interview.repository.InterviewSessionRepository;
+import com.interviewai.backend.llm.service.LlmJsonSanitizer;
 import com.interviewai.backend.user.model.User;
 import com.interviewai.backend.user.enums.OAuthProvider;
 import com.interviewai.backend.user.enums.UserRole;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -114,6 +116,9 @@ class InterviewServiceImplTest {
 
     @Mock
     private SseEmitterHelper sseEmitterHelper;
+
+    @Spy
+    private LlmJsonSanitizer llmJsonSanitizer = new LlmJsonSanitizer();
 
     private User testUser;
 
@@ -487,6 +492,124 @@ class InterviewServiceImplTest {
         // then
         assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
         assertThat(result.getStrengths()).isEqualTo("좋아요");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_1차_파싱_성공시_재호출_없이_1회만_호출한다")
+    void 기능_테스트_finishInterview_1차_파싱_성공시_재호출_없이_1회만_호출한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"좋음\",\"improvements\":\"없음\",\"fullReport\":\"훌륭\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then — LLM 1회만 호출
+        verify(claudeAiClient, times(1)).generateFeedback(any(), any());
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_1차_파싱_실패시_LLM을_재호출하여_2차_결과로_저장한다")
+    void 기능_테스트_finishInterview_1차_파싱_실패시_LLM을_재호출하여_2차_결과로_저장한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("파싱 불가능한 산문 응답")
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"재시도 강점\",\"improvements\":\"재시도 개선\",\"fullReport\":\"재시도 성공\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then — LLM 2회 호출, 2차 결과 저장
+        verify(claudeAiClient, times(2)).generateFeedback(any(), any());
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
+        assertThat(result.getStrengths()).isEqualTo("재시도 강점");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_1차_2차_모두_파싱_실패시_2회_호출_후_fallback으로_저장된다")
+    void 기능_테스트_finishInterview_1차_2차_모두_파싱_실패시_2회_호출_후_fallback으로_저장된다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("파싱 불가 1")
+                .willReturn("파싱 불가 2");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then — 정확히 2회 호출 후 fallback (3회 이상 재시도하지 않음)
+        verify(claudeAiClient, times(2)).generateFeedback(any(), any());
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.NEEDS_IMPROVEMENT);
+        assertThat(result.getStrengths()).isEqualTo("분석 중...");
+        assertThat(result.getFullReport()).isEqualTo("파싱 불가 2");
+    }
+
+    @Test
+    @DisplayName("기능_테스트_finishInterview_1차_응답이_빈문자열이면_sanitize가_empty를_내고_재호출한다")
+    void 기능_테스트_finishInterview_1차_응답이_빈문자열이면_sanitize가_empty를_내고_재호출한다() {
+        // given
+        Long userId = 1L;
+        Long sessionId = 1L;
+
+        InterviewSession session = InterviewSession.builder()
+                .user(testUser)
+                .mode(InterviewMode.BASIC)
+                .level(InterviewLevel.JUNIOR)
+                .build();
+
+        given(interviewSessionRepository.findByIdAndUserId(sessionId, userId)).willReturn(Optional.of(session));
+        given(interviewMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId)).willReturn(List.of());
+        given(claudeAiClient.generateFeedback(any(), any()))
+                .willReturn("")
+                .willReturn("{\"overallLevel\":\"PASS\",\"strengths\":\"강점\",\"improvements\":\"개선\",\"fullReport\":\"보고서\"}");
+        given(interviewFeedbackRepository.save(any(InterviewFeedback.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        InterviewFeedbackResponseDto result = interviewService.finishInterview(userId, sessionId);
+
+        // then — 빈 응답도 파싱 실패로 간주되어 재호출됨
+        verify(claudeAiClient, times(2)).generateFeedback(any(), any());
+        assertThat(result.getOverallLevel()).isEqualTo(AnswerLevel.PASS);
     }
 
     @Test
