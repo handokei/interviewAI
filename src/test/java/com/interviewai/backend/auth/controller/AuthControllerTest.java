@@ -122,6 +122,15 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("예외_테스트_이메일_로그인_필수_필드_누락_시_400을_반환한다")
+    void 예외_테스트_이메일_로그인_필수_필드_누락_시_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("예외_테스트_잘못된_자격_증명이면_401을_반환한다")
     void 예외_테스트_잘못된_자격_증명이면_401을_반환한다() throws Exception {
         Map<String, String> request = Map.of(

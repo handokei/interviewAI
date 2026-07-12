@@ -1,14 +1,18 @@
 package com.interviewai.backend.user.controller;
 
 import com.interviewai.backend.global.common.response.ApiResponse;
+import com.interviewai.backend.user.controller.dto.ChangePasswordRequestDto;
 import com.interviewai.backend.user.controller.dto.UserProfileResponseDto;
 import com.interviewai.backend.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,5 +29,15 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserProfileResponseDto>> getMyProfile(
             @AuthenticationPrincipal Long userId) {
         return ResponseEntity.ok(ApiResponse.ok(userService.findUserProfile(userId)));
+    }
+
+    @Operation(summary = "비밀번호 변경")
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody ChangePasswordRequestDto request) {
+        userService.changePassword(userId, request.getCurrentPassword(),
+                request.getNewPassword(), request.getConfirmNewPassword());
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 }

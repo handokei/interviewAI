@@ -73,4 +73,8 @@ public class User {
     public void updateGithubAccessToken(String githubAccessToken) {
         this.githubAccessToken = githubAccessToken;
     }
+
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }
